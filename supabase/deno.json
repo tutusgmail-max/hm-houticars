@@ -1,0 +1,27 @@
+{
+  "tasks": {
+    "start": "supabase start",
+    "stop": "supabase stop",
+    "status": "supabase status",
+    "db:push": "supabase db push",
+    "db:pull": "supabase db pull",
+    "functions:deploy": "supabase functions deploy",
+    "functions:list": "supabase functions list",
+    "functions:logs": "supabase functions logs"
+  },
+  "imports": {
+    "std/": "https://deno.land/std@0.192.0/",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.45.0"
+  },
+  "compilerOptions": {
+    "allowJs": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "noImplicitAny": false,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "target": "ES2020"
+  }
+}

@@ -1,0 +1,112 @@
+#!/usr/bin/env node
+
+# ============================================================
+# Supabase Project Configuration
+# ============================================================
+# This file configures the Supabase project for local development
+# and deployment. Update with your project credentials for production.
+
+[project]
+# Project name
+name = "hmhouticars-v3"
+
+# Version of Supabase being used
+version = 1.0.0
+
+# Organization ID (for authentication)
+# organization_id = "YOUR_ORG_ID"
+
+[api]
+# Enable API
+enabled = true
+
+# Port for the API server
+port = 54321
+
+# API extension configuration
+extra_search_path = ["extensions"]
+
+# JWT configuration for API
+jwt_secret = "super-secret-jwt-token-with-at-least-32-characters-change-this"
+jwt_exp = 3600
+
+[db]
+# Database port
+port = 5432
+
+# Major version of PostgreSQL
+major_version = 15
+
+# Connection settings
+seed_seed_file = "supabase/seed.sql"
+
+[auth]
+# Enable auth
+enabled = true
+
+# Auth server port
+port = 54321
+
+# Redirect URLs for OAuth callbacks
+site_url = "http://localhost:5173"
+additional_redirect_urls = [
+  "http://localhost:3000",
+  "http://localhost:3001"
+]
+
+# JWT settings
+jwt_secret = "super-secret-jwt-token-with-at-least-32-characters-change-this"
+jwt_exp = 3600
+jwt_aud = "authenticated"
+
+# Auth providers (configure as needed)
+disable_signup = false
+enable_signup = true
+
+[storage]
+# Enable storage
+enabled = true
+
+# Storage file size limit (in bytes)
+# 50MB = 52428800
+file_size_limit = 52428800
+
+[realtime]
+# Enable realtime
+enabled = true
+
+# Max connections per channel
+max_connections_per_client = 10
+
+# Max message size (in bytes)
+max_message_size = 262144
+
+[functions]
+# Enable edge functions
+enabled = true
+
+# Port for functions
+port = 54321
+
+# Import map path
+import_map = "supabase/functions/import_map.json"
+
+# Verify JWT tokens
+verify_jwt = true
+
+[analytics]
+# Enable analytics
+enabled = false
+
+# Analytics backend
+backend_url = "https://api.supabase.com"
+
+[observability]
+# Enable debug mode
+debug = true
+
+# Log level (trace, debug, info, warn, error)
+log_level = "debug"
+
+# Enable metrics
+metrics_enabled = false
