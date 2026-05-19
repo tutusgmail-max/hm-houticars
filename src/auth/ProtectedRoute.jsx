@@ -15,26 +15,35 @@ import { useApp } from '../context/AppContext'
 import FullPageLoader from '../components/ui/FullPageLoader'
 
 export default function ProtectedRoute({ children, adminOnly = false }) {
-  const { user, profile, authLoading, profileLoading, isAdmin } = useAuth()
+  const { user, profile, authLoading, profileLoading, profileReady, isAdmin } = useAuth()
   const { openAuth } = useApp()
 
-  // FIX: trigger auth modal via effect, not during render
   useEffect(() => {
     if (!authLoading && !user) {
       openAuth('login')
     }
   }, [authLoading, user, openAuth])
 
-  // Show loader while checking session
+  useEffect(() => {
+    console.debug('[ProtectedRoute] auth check', {
+      userId: user?.id,
+      email: user?.email,
+      profile,
+      profileLoading,
+      profileReady,
+      isAdmin,
+      adminOnly,
+    })
+  }, [user, profile, profileLoading, profileReady, isAdmin, adminOnly])
+
   if (authLoading) return <FullPageLoader />
 
-  // Not authenticated — redirect (modal opened via effect above)
   if (!user) return <Navigate to="/" replace />
 
-  // Wait for profile before admin check
-  if (adminOnly && profileLoading) return <FullPageLoader />
+  if (adminOnly && (profileLoading || !profileReady)) {
+    return <FullPageLoader />
+  }
 
-  // Authenticated but not admin
   if (adminOnly && !isAdmin) {
     return <Navigate to="/" replace state={{ adminDenied: true }} />
   }

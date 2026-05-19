@@ -15,26 +15,47 @@ export function AuthProvider({ children }) {
   const [userDocuments, setUserDocuments] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [profileLoading, setProfileLoading] = useState(false)
+  const [profileReady, setProfileReady] = useState(false)
   const [documentsLoading, setDocumentsLoading] = useState(false)
   const profileFetchRef = useRef(null)
 
   const loadProfile = useCallback(async (userId) => {
-    if (profileFetchRef.current === userId) return
+    if (!userId) {
+      setProfile(null)
+      setProfileLoading(false)
+      setProfileReady(true)
+      profileFetchRef.current = null
+      return
+    }
+
+    if (profileFetchRef.current === userId && profileLoading) return
     profileFetchRef.current = userId
     setProfileLoading(true)
+    setProfileReady(false)
+
+    console.debug('[AuthContext] loadProfile start', {
+      userId,
+      profileFetchRef: profileFetchRef.current,
+      previousProfile: profile,
+    })
+
     try {
       const data = await fetchProfile(userId)
+      console.debug('[AuthContext] loadProfile success', { userId, profile: data })
       setProfile(data)
     } catch (err) {
       if (err?.code !== 'PGRST116') {
         console.warn('[AuthContext] loadProfile error:', err?.message)
+      } else {
+        console.debug('[AuthContext] loadProfile no profile found', { userId, error: err.message })
       }
       setProfile(null)
     } finally {
       setProfileLoading(false)
+      setProfileReady(true)
       profileFetchRef.current = null
     }
-  }, [])
+  }, [profileLoading, profile])
 
   const loadUserDocuments = useCallback(async (userId, legacyProfile) => {
     if (!userId) {
@@ -63,41 +84,75 @@ export function AuthProvider({ children }) {
   const refreshSession = useCallback(async (sessionUser) => {
     if (!sessionUser) {
       setProfile(null)
+      setProfileReady(false)
       setUserDocuments(null)
       profileFetchRef.current = null
       return
     }
+
+    console.debug('[AuthContext] refreshSession', {
+      userId: sessionUser.id,
+      email: sessionUser.email,
+      user: sessionUser,
+    })
+
+    setProfileReady(false)
     let prof = null
     try {
       prof = await fetchProfile(sessionUser.id)
+      console.debug('[AuthContext] refreshSession profile', { userId: sessionUser.id, profile: prof })
       setProfile(prof)
     } catch (err) {
-      if (err?.code !== 'PGRST116') console.warn('[AuthContext] loadProfile:', err?.message)
+      if (err?.code !== 'PGRST116') console.warn('[AuthContext] refreshSession loadProfile:', err?.message)
       setProfile(null)
+    } finally {
+      setProfileReady(true)
     }
+
     await loadUserDocuments(sessionUser.id, prof)
   }, [loadUserDocuments])
 
   useEffect(() => {
     let mounted = true
 
-    authGetSession().then((session) => {
-      if (!mounted) return
-      const sessionUser = session?.user ?? null
-      setUser(sessionUser)
-      if (sessionUser) refreshSession(sessionUser)
-      setAuthLoading(false)
-    }).catch(() => {
-      if (mounted) setAuthLoading(false)
-    })
+    async function initAuth() {
+      try {
+        const session = await authGetSession()
+        if (!mounted) return
 
-    const subscription = authOnChange((_event, session) => {
+        const sessionUser = session?.user ?? null
+        console.debug('[AuthContext] authGetSession result', { session, sessionUser })
+        setUser(sessionUser)
+
+        if (sessionUser) {
+          await refreshSession(sessionUser)
+        } else {
+          setProfile(null)
+          setProfileReady(false)
+        }
+      } catch (err) {
+        if (mounted) {
+          setProfile(null)
+          setProfileReady(false)
+        }
+        console.warn('[AuthContext] authGetSession failed', err)
+      } finally {
+        if (mounted) setAuthLoading(false)
+      }
+    }
+
+    initAuth()
+
+    const subscription = authOnChange((event, session) => {
       if (!mounted) return
       const sessionUser = session?.user ?? null
+      console.debug('[AuthContext] authOnChange', { event, sessionUser })
       setUser(sessionUser)
-      if (sessionUser) refreshSession(sessionUser)
-      else {
+      if (sessionUser) {
+        refreshSession(sessionUser)
+      } else {
         setProfile(null)
+        setProfileReady(false)
         setUserDocuments(null)
         profileFetchRef.current = null
       }
@@ -110,11 +165,24 @@ export function AuthProvider({ children }) {
   }, [refreshSession])
 
   const signOut = useCallback(async () => {
+    setProfile(null)
+    setProfileReady(false)
+    setUserDocuments(null)
+    profileFetchRef.current = null
     await authSignOut()
   }, [])
 
-  const isAdmin = profile?.role === 'admin'
+  const isAdmin = profile?.role?.toString().toLowerCase() === 'admin'
   const isEmailVerified = user?.email_confirmed_at != null
+
+  console.debug('[AuthContext] auth state', {
+    userId: user?.id,
+    email: user?.email,
+    profile,
+    profileReady,
+    profileLoading,
+    isAdmin,
+  })
 
   return (
     <AuthContext.Provider value={{
@@ -123,6 +191,7 @@ export function AuthProvider({ children }) {
       userDocuments,
       authLoading,
       profileLoading,
+      profileReady,
       documentsLoading,
       isAdmin,
       isEmailVerified,
