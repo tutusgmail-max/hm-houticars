@@ -7,6 +7,7 @@ import AdminHeader from '../components/admin/AdminHeader'
 const TITLES = {
   '/admin': { title: 'Tableau de bord', subtitle: 'Vue d\'ensemble de votre activité' },
   '/admin/fleet': { title: 'Gestion de la flotte', subtitle: 'Véhicules, images et disponibilité' },
+  '/admin/calendar': { title: 'Calendrier', subtitle: 'Disponibilités, confirmations et blocages' },
   '/admin/reservations': { title: 'Réservations', subtitle: 'Suivi et validation des locations' },
   '/admin/documents': { title: 'Centre documents', subtitle: 'CIN et permis clients' },
   '/admin/customers': { title: 'Clients', subtitle: 'Base clients et historique' },

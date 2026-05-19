@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { getAllReservations, getAllProfiles } from '../lib/supabase'
+import { getAllReservations, getAllProfiles, supabase } from '../lib/supabase'
 import { fetchAllCars } from '../services/cars.service'
 
 const AdminDataContext = createContext(null)
@@ -32,6 +32,23 @@ export function AdminDataProvider({ children }) {
 
   useEffect(() => {
     refresh()
+  }, [refresh])
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin-reservations-rt')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'reservations' },
+        () => {
+          refresh()
+        },
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [refresh])
 
   const stats = useMemo(() => {
@@ -76,14 +93,17 @@ export function AdminDataProvider({ children }) {
   }, [reservations])
 
   const activity = useMemo(() => {
-    return reservations.slice(0, 12).map((r) => ({
-      id: r.id,
-      type: 'reservation',
-      title: `${r.car_name || 'Véhicule'} — ${r.status}`,
-      subtitle: r.customer_name || r.profiles?.full_name || 'Client',
-      time: r.created_at,
-      status: r.status,
-    }))
+    return [...reservations]
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, 12)
+      .map((r) => ({
+        id: r.id,
+        type: 'reservation',
+        title: `${r.car_name || 'Véhicule'} — ${r.status}`,
+        subtitle: r.customer_name || r.profiles?.full_name || 'Client',
+        time: r.created_at,
+        status: r.status,
+      }))
   }, [reservations])
 
   const value = useMemo(

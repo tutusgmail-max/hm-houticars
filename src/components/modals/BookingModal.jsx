@@ -5,9 +5,14 @@ import { BsFuelPump } from 'react-icons/bs'
 import { useApp } from '../../context/AppContext'
 import { useAuth } from '../../auth/AuthContext'
 import { createReservation } from '../../lib/supabase'
+import { uploadDocument, validateDocumentFile } from '../../services/documentUpload.service'
 import { LOCATIONS } from '../../data'
 
 const STEPS = ['Véhicule', 'Détails', 'Confirmation']
+const REQUIRED_DOCS = [
+  { key: 'cin_front', label: 'CIN' },
+  { key: 'permis_front', label: 'Permis de conduire' },
+]
 
 function todayStr() {
   return new Date().toISOString().split('T')[0]
@@ -27,17 +32,19 @@ function formatDate(date) {
 
 function buildWhatsAppMessage({ car, form, days, total, ref }) {
   return encodeURIComponent(
-    `Bonjour HM Houti Cars 👋\n\nJe confirme ma demande de réservation.\n\nRéférence: ${ref}\nVéhicule: ${car.name}\nPrix: ${car.price} DH/jour\nCarburant: ${car.fuel}\nDépart: ${formatDate(form.start)}\nRetour: ${formatDate(form.end)}\nDurée: ${days} jour${days > 1 ? 's' : ''}\nVille: ${form.pickup}\nTotal: ${total} DH\n\nClient: ${form.name}\nTéléphone: ${form.phone}`,
+    `Bonjour HM Houti Cars 👋\n\nJe confirme ma demande de réservation.\n\nRéférence: ${ref}\nVéhicule: ${car.name}\nPrix: ${car.price} DH/jour\nCarburant: ${car.fuel}\nDépart: ${formatDate(form.start)}\nRetour: ${formatDate(form.end)}\nDurée: ${days} jour${days > 1 ? 's' : ''}\nVille: ${form.pickup}\nTotal: ${total} DH\n\nClient: ${form.name}\nTéléphone: ${form.phone}\nWhatsApp: ${form.whatsapp}\nNotes: ${form.notes || '—'}`,
   )
 }
 
 export default function BookingModal() {
   const { bookingModal, closeBooking, openReceipt, openAuth, addToast } = useApp()
-  const { user, profile } = useAuth()
+  const { user, profile, authLoading } = useAuth()
   const [step, setStep] = useState(0)
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState({})
-  const [form, setForm] = useState({ start: '', end: '', pickup: LOCATIONS[0] || 'Nador', phone: '', name: '' })
+  const [docs, setDocs] = useState({})
+  const [uploadProgress, setUploadProgress] = useState('')
+  const [form, setForm] = useState({ start: '', end: '', pickup: LOCATIONS[0] || 'Nador', phone: '', whatsapp: '', name: '', notes: '' })
 
   const car = bookingModal?.car
   const days = useMemo(() => diffDays(form.start, form.end), [form.start, form.end])
@@ -45,17 +52,27 @@ export default function BookingModal() {
 
   useEffect(() => {
     if (!bookingModal) return
+    if (!authLoading && !user) {
+      addToast('Veuillez créer un compte ou vous connecter pour continuer votre réservation.', 'error')
+      openAuth('login', 'Veuillez créer un compte ou vous connecter pour continuer votre réservation.')
+      closeBooking()
+      return
+    }
     setStep(0)
     setErrors({})
+    setDocs({})
+    setUploadProgress('')
     setLoading(false)
     setForm({
       start: bookingModal.prefStart || '',
       end: bookingModal.prefEnd || '',
       pickup: LOCATIONS[0] || 'Nador',
       phone: profile?.phone || user?.user_metadata?.phone || '',
+      whatsapp: profile?.phone || user?.user_metadata?.phone || '',
       name: profile?.full_name || user?.user_metadata?.full_name || '',
+      notes: '',
     })
-  }, [bookingModal, profile?.phone, profile?.full_name, user?.user_metadata?.phone, user?.user_metadata?.full_name])
+  }, [bookingModal, authLoading, user, profile?.phone, profile?.full_name, user?.user_metadata?.phone, user?.user_metadata?.full_name, addToast, openAuth, closeBooking])
 
   if (!bookingModal || !car) return null
 
@@ -64,9 +81,19 @@ export default function BookingModal() {
     setErrors((prev) => ({ ...prev, [key]: null, form: null }))
   }
 
+  const updateDoc = (key, file) => {
+    const validationError = file ? validateDocumentFile(file) : 'Document requis'
+    setDocs((prev) => ({ ...prev, [key]: file || null }))
+    setErrors((prev) => ({ ...prev, [key]: validationError, form: null }))
+  }
+
   const validateStep = () => {
     const nextErrors = {}
     const today = todayStr()
+
+    if (!user) {
+      nextErrors.form = 'Veuillez créer un compte ou vous connecter pour continuer votre réservation.'
+    }
 
     if (step === 1) {
       if (!form.start) nextErrors.start = 'Date de départ requise'
@@ -78,6 +105,13 @@ export default function BookingModal() {
       if (!form.name.trim()) nextErrors.name = 'Nom complet requis'
       if (!form.phone.trim()) nextErrors.phone = 'Téléphone requis'
       if (form.phone && !/^[+\d\s().-]{6,20}$/.test(form.phone.trim())) nextErrors.phone = 'Numéro de téléphone invalide'
+      if (!form.whatsapp.trim()) nextErrors.whatsapp = 'WhatsApp requis'
+      if (form.whatsapp && !/^[+\d\s().-]{6,20}$/.test(form.whatsapp.trim())) nextErrors.whatsapp = 'Numéro WhatsApp invalide'
+      for (const doc of REQUIRED_DOCS) {
+        const file = docs[doc.key]
+        const validationError = file ? validateDocumentFile(file) : `${doc.label} requis`
+        if (validationError) nextErrors[doc.key] = validationError
+      }
     }
 
     setErrors(nextErrors)
@@ -85,6 +119,11 @@ export default function BookingModal() {
   }
 
   const goNext = () => {
+    if (!user) {
+      addToast('Veuillez créer un compte ou vous connecter pour continuer votre réservation.', 'error')
+      openAuth('login', 'Veuillez créer un compte ou vous connecter pour continuer votre réservation.')
+      return
+    }
     if (step === 1 && !validateStep()) return
     setStep((prev) => Math.min(prev + 1, 2))
   }
@@ -92,15 +131,26 @@ export default function BookingModal() {
   const confirmReservation = async () => {
     if (!validateStep()) return
     if (!user) {
-      addToast('Veuillez vous connecter pour confirmer votre réservation.', 'error')
-      openAuth('login')
+      addToast('Veuillez créer un compte ou vous connecter pour continuer votre réservation.', 'error')
+      openAuth('login', 'Veuillez créer un compte ou vous connecter pour continuer votre réservation.')
       return
     }
 
     setLoading(true)
+    setUploadProgress('Préparation des documents...')
     const ref = `HM${Date.now().toString().slice(-6)}`
 
     try {
+      const uploadedDocs = {}
+      const urlColumns = {}
+      for (const doc of REQUIRED_DOCS) {
+        setUploadProgress(`Upload ${doc.label}...`)
+        const uploaded = await uploadDocument(user.id, doc.key, docs[doc.key])
+        uploadedDocs[doc.key] = uploaded
+        if (doc.key === 'cin_front') urlColumns.cin_front_url = uploaded.url
+        if (doc.key === 'permis_front') urlColumns.permis_front_url = uploaded.url
+      }
+
       const reservation = {
         user_id: user.id,
         ref,
@@ -117,11 +167,13 @@ export default function BookingModal() {
         customer_name: form.name.trim(),
         customer_email: user.email || profile?.email || null,
         customer_phone: form.phone.trim(),
-        notes: 'Réservation rapide depuis le formulaire 3 étapes.',
+        notes: `WhatsApp: ${form.whatsapp.trim()}${form.notes?.trim() ? `\nNotes client: ${form.notes.trim()}` : ''}`,
         status: 'pending',
-        documents: {},
+        documents: uploadedDocs,
+        ...urlColumns,
       }
 
+      setUploadProgress('Enregistrement de la réservation...')
       const saved = await createReservation(reservation)
       addToast('Réservation confirmée avec succès! 🎉')
       openReceipt({ ...reservation, ...saved, car_img: car.img, created_at: new Date().toISOString() })
@@ -133,6 +185,7 @@ export default function BookingModal() {
       setErrors({ form: msg })
     } finally {
       setLoading(false)
+      setUploadProgress('')
     }
   }
 
@@ -174,10 +227,11 @@ export default function BookingModal() {
               <AnimatePresence mode="wait">
                 <motion.div key={step} initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -18 }} transition={{ duration: 0.28 }}>
                   {step === 0 && <StepVehicle car={car} onNext={goNext} />}
-                  {step === 1 && <StepDetails form={form} update={update} errors={errors} />}
-                  {step === 2 && <StepConfirm car={car} form={form} days={days} total={total} />}
+                  {step === 1 && <StepDetails form={form} update={update} updateDoc={updateDoc} docs={docs} errors={errors} />}
+                  {step === 2 && <StepConfirm car={car} form={form} docs={docs} days={days} total={total} />}
                 </motion.div>
               </AnimatePresence>
+              {uploadProgress && <p className="mt-4 text-center text-xs font-semibold uppercase tracking-[2px] text-gold">{uploadProgress}</p>}
 
               <div className="mt-8 flex flex-col gap-3 border-t border-white/[0.07] pt-5 sm:flex-row sm:items-center">
                 <button type="button" onClick={step === 0 ? closeBooking : () => setStep((prev) => prev - 1)} className="inline-flex items-center justify-center gap-2 rounded-sm border border-gold/25 px-6 py-3 font-condensed text-[12px] font-extrabold uppercase tracking-[2px] text-gold transition hover:bg-gold/[0.08]">
@@ -185,7 +239,9 @@ export default function BookingModal() {
                 </button>
                 <div className="flex-1" />
                 {step < 2 ? (
-                  <button type="button" onClick={goNext} className="btn-gold px-8 py-3 text-[13px]">Continuer →</button>
+                  <button type="button" onClick={goNext} disabled={authLoading} className="btn-gold inline-flex items-center justify-center gap-2 px-8 py-3 text-[13px] disabled:cursor-not-allowed disabled:opacity-60">
+                    {authLoading && <FiLoader className="animate-spin" />} Continuer →
+                  </button>
                 ) : (
                   <button type="button" onClick={confirmReservation} disabled={loading} className="btn-gold inline-flex items-center justify-center gap-2 px-8 py-3 text-[13px] disabled:cursor-not-allowed disabled:opacity-60">
                     {loading ? <FiLoader className="animate-spin" /> : <FiCheck />} {loading ? 'Confirmation...' : 'Confirmer la réservation'}
@@ -254,7 +310,7 @@ function StepVehicle({ car }) {
   )
 }
 
-function StepDetails({ form, update, errors }) {
+function StepDetails({ form, update, updateDoc, docs, errors }) {
   const minEnd = form.start || todayStr()
   return (
     <div>
@@ -275,15 +331,29 @@ function StepDetails({ form, update, errors }) {
         <Field label="Phone number" error={errors.phone}>
           <input type="tel" value={form.phone} onChange={(e) => update('phone', e.target.value)} placeholder="+212 6XX XXX XXX" className="booking-input" />
         </Field>
+        <Field label="WhatsApp" error={errors.whatsapp}>
+          <input type="tel" value={form.whatsapp} onChange={(e) => update('whatsapp', e.target.value)} placeholder="+212 6XX XXX XXX" className="booking-input" />
+        </Field>
         <Field label="Full name" error={errors.name}>
           <input type="text" value={form.name} onChange={(e) => update('name', e.target.value)} placeholder="Nom complet" className="booking-input" />
+        </Field>
+        <Field label="CIN upload" error={errors.cin_front}>
+          <input type="file" accept=".jpg,.jpeg,.png,.pdf" onChange={(e) => updateDoc('cin_front', e.target.files?.[0] || null)} className="booking-input file:mr-4 file:rounded-lg file:border-0 file:bg-gold file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-[#08111F]" />
+          {docs.cin_front && <span className="mt-2 block truncate text-xs text-white/35">{docs.cin_front.name}</span>}
+        </Field>
+        <Field label="Driving license upload" error={errors.permis_front}>
+          <input type="file" accept=".jpg,.jpeg,.png,.pdf" onChange={(e) => updateDoc('permis_front', e.target.files?.[0] || null)} className="booking-input file:mr-4 file:rounded-lg file:border-0 file:bg-gold file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-[#08111F]" />
+          {docs.permis_front && <span className="mt-2 block truncate text-xs text-white/35">{docs.permis_front.name}</span>}
+        </Field>
+        <Field label="Notes">
+          <textarea value={form.notes} onChange={(e) => update('notes', e.target.value)} rows={3} placeholder="Demandes spéciales, heure d'arrivée..." className="booking-input resize-none sm:col-span-2" />
         </Field>
       </div>
     </div>
   )
 }
 
-function StepConfirm({ car, form, days, total }) {
+function StepConfirm({ car, form, docs, days, total }) {
   return (
     <div>
       <h3 className="font-display text-4xl font-bold text-white">Confirmation</h3>
@@ -297,6 +367,10 @@ function StepConfirm({ car, form, days, total }) {
         <Summary label="Ville" value={form.pickup} />
         <Summary label="Client" value={form.name} />
         <Summary label="Téléphone" value={form.phone} />
+        <Summary label="WhatsApp" value={form.whatsapp} />
+        <Summary label="CIN" value={docs.cin_front?.name || 'Fourni'} />
+        <Summary label="Permis" value={docs.permis_front?.name || 'Fourni'} />
+        {form.notes && <Summary label="Notes" value={form.notes} />}
         <div className="flex items-center justify-between bg-gold/[0.08] px-5 py-5">
           <span className="font-condensed text-xl font-black uppercase tracking-[1px] text-white">Total</span>
           <span className="font-condensed text-4xl font-black text-gold">{total} DH</span>

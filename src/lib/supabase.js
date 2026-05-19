@@ -3,8 +3,6 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-console.log('SUPABASE URL:', supabaseUrl)
-
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error(
     'Missing Supabase environment variables. Copy `.env.example` to `.env` and set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.'
@@ -184,6 +182,20 @@ export function mapRowToReservation(row) {
 }
 
 export async function createReservation(reservation) {
+  const { data: overlaps, error: overlapError } = await supabase
+    .from('reservations')
+    .select('id')
+    .eq('car_id', reservation.car_id)
+    .in('status', ['pending', 'confirmed'])
+    .lte('start_date', reservation.end_date)
+    .gte('end_date', reservation.start_date)
+    .limit(1)
+
+  if (overlapError) throw overlapError
+  if (overlaps?.length) {
+    throw new Error('Ce véhicule est déjà réservé ou en attente sur ces dates.')
+  }
+
   const baseRow = mapReservationToRow(reservation)
   let { data, error } = await supabase.from('reservations').insert(baseRow).select().single()
 

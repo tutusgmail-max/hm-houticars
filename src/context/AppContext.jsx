@@ -3,14 +3,18 @@
  * UI-only context. Auth state lives in AuthContext.
  */
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { authGetSession } from '../services/auth.service'
 
 const AppContext = createContext(null)
+const PENDING_BOOKING_KEY = 'hmhouticars.pendingBooking'
+const BOOKING_AUTH_MESSAGE = 'Veuillez créer un compte ou vous connecter pour continuer votre réservation.'
 
 export function AppProvider({ children }) {
   const [activeSection, setActiveSection] = useState('home')
   const [bookingModal, setBookingModal] = useState(null)
   const [receipt, setReceipt] = useState(null)
   const [authModal, setAuthModal] = useState(null)
+  const [authNotice, setAuthNotice] = useState('')
   const [toasts, setToasts] = useState([])
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -27,12 +31,49 @@ export function AppProvider({ children }) {
   }, [])
 
   const scrollTo     = useCallback((id) => { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }); setMobileOpen(false) }, [])
-  const openBooking  = useCallback((car, prefStart = '', prefEnd = '') => setBookingModal({ car, prefStart, prefEnd }), [])
+  const savePendingBooking = useCallback((car, prefStart = '', prefEnd = '') => {
+    if (!car) return
+    localStorage.setItem(PENDING_BOOKING_KEY, JSON.stringify({ car, prefStart, prefEnd, savedAt: Date.now() }))
+  }, [])
+  const openBooking = useCallback(async (car, prefStart = '', prefEnd = '') => {
+    try {
+      const session = await authGetSession()
+      if (!session?.user) {
+        savePendingBooking(car, prefStart, prefEnd)
+        setAuthNotice(BOOKING_AUTH_MESSAGE)
+        setAuthModal('login')
+        setToasts((p) => [...p, { id: Date.now(), msg: BOOKING_AUTH_MESSAGE, type: 'error' }])
+        return
+      }
+      setBookingModal({ car, prefStart, prefEnd })
+    } catch {
+      savePendingBooking(car, prefStart, prefEnd)
+      setAuthNotice(BOOKING_AUTH_MESSAGE)
+      setAuthModal('login')
+      setToasts((p) => [...p, { id: Date.now(), msg: 'Vérification de session impossible. Veuillez vous connecter.', type: 'error' }])
+    }
+  }, [savePendingBooking])
+  const resumePendingBooking = useCallback(() => {
+    const raw = localStorage.getItem(PENDING_BOOKING_KEY)
+    if (!raw) return false
+    try {
+      const pending = JSON.parse(raw)
+      localStorage.removeItem(PENDING_BOOKING_KEY)
+      if (!pending?.car) return false
+      setBookingModal({ car: pending.car, prefStart: pending.prefStart || '', prefEnd: pending.prefEnd || '' })
+      setAuthNotice('')
+      setAuthModal(null)
+      return true
+    } catch {
+      localStorage.removeItem(PENDING_BOOKING_KEY)
+      return false
+    }
+  }, [])
   const closeBooking = useCallback(() => setBookingModal(null), [])
   const openReceipt  = useCallback((data) => { setBookingModal(null); setReceipt(data) }, [])
   const closeReceipt = useCallback(() => setReceipt(null), [])
-  const openAuth     = useCallback((mode = 'login') => setAuthModal(mode), [])
-  const closeAuth    = useCallback(() => setAuthModal(null), [])
+  const openAuth     = useCallback((mode = 'login', notice = '') => { setAuthNotice(notice); setAuthModal(mode) }, [])
+  const closeAuth    = useCallback(() => { setAuthModal(null); setAuthNotice('') }, [])
   const addToast = useCallback((msg, type = 'success') => {
     const id = Date.now()
     setToasts((p) => [...p, { id, msg, type }])
@@ -43,9 +84,9 @@ export function AppProvider({ children }) {
   return (
     <AppContext.Provider value={{
       activeSection, scrollTo,
-      bookingModal, openBooking, closeBooking,
+      bookingModal, openBooking, closeBooking, resumePendingBooking,
       receipt, openReceipt, closeReceipt,
-      authModal, openAuth, closeAuth,
+      authModal, authNotice, openAuth, closeAuth,
       toasts, addToast, removeToast,
       mobileOpen, setMobileOpen,
     }}>

@@ -1,7 +1,8 @@
-import React, { lazy, Suspense } from 'react'
+import React, { lazy, Suspense, useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 
 import { AppProvider } from './context/AppContext'
+import { useApp } from './context/AppContext'
 import { CarsProvider } from './context/CarsContext'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 
@@ -24,9 +25,16 @@ import ResetPasswordPage from './pages/ResetPasswordPage'
 const AdminApp = lazy(() => import('./pages/AdminApp'))
 
 function AppShell() {
-  const { authLoading } = useAuth()
+  const { user, authLoading } = useAuth()
+  const { resumePendingBooking } = useApp()
   const location = useLocation()
   const isAdminRoute = location.pathname.startsWith('/admin')
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      resumePendingBooking()
+    }
+  }, [authLoading, user, resumePendingBooking])
 
   if (authLoading) {
     return <FullPageLoader />

@@ -14,7 +14,8 @@ import {
 const NAV = [
   { to: '/admin', end: true, label: 'Tableau de bord', icon: LayoutDashboard },
   { to: '/admin/fleet', label: 'Flotte', icon: Car },
-  { to: '/admin/reservations', label: 'Réservations', icon: CalendarDays },
+  { to: '/admin/calendar', label: 'Calendrier', icon: CalendarDays },
+  { to: '/admin/reservations', label: 'Réservations', icon: FileText },
   { to: '/admin/documents', label: 'Documents', icon: FileText },
   { to: '/admin/customers', label: 'Clients', icon: Users },
   { to: '/admin/settings', label: 'Paramètres', icon: Settings },
