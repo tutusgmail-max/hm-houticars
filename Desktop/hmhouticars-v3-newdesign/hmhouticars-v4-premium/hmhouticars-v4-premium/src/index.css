@@ -1,0 +1,210 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=Barlow:wght@300;400;500;600;700;800&family=Barlow+Condensed:wght@400;600;700;800;900&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: 'DM Sans', 'Barlow', sans-serif;
+    background: #080E18;
+    color: #FFFFFF;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    opacity: 0.025;
+  }
+}
+
+@layer components {
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: #0B1623; }
+  ::-webkit-scrollbar-thumb { background: #C9A84C; border-radius: 2px; }
+
+  .booking-input {
+    width: 100%;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.035);
+    color: #fff;
+    padding: 13px 15px;
+    border-radius: 12px;
+    outline: none;
+    font-size: 14px;
+    transition: border-color .2s ease, background .2s ease, box-shadow .2s ease;
+  }
+
+  .booking-input:focus {
+    border-color: rgba(201,168,76,0.45);
+    background: rgba(255,255,255,0.055);
+    box-shadow: 0 0 0 4px rgba(201,168,76,0.08);
+  }
+
+  .booking-input::placeholder {
+    color: rgba(255,255,255,0.25);
+  }
+
+  /* Section labels */
+  .section-label {
+    @apply inline-block text-gold text-[11px] font-bold tracking-[2.5px] uppercase mb-3 border border-gold/25 bg-gold/10 px-4 py-1.5 rounded-full;
+  }
+
+  .section-title {
+    font-family: 'Cormorant Garamond', serif;
+    @apply text-white leading-tight;
+    font-size: clamp(2.2rem, 4vw, 3rem);
+    font-weight: 900;
+  }
+
+  .section-title-dark {
+    font-family: 'Cormorant Garamond', serif;
+    @apply text-navy leading-tight;
+    font-size: clamp(2.2rem, 4vw, 3rem);
+    font-weight: 900;
+  }
+
+  /* Gold button */
+  .btn-gold {
+    @apply bg-gradient-to-br from-gold to-gold-light text-navy font-bold border-none rounded cursor-pointer transition-all duration-300 uppercase tracking-[2px] font-condensed;
+  }
+  .btn-gold:hover {
+    @apply -translate-y-px shadow-[0_8px_24px_rgba(201,168,76,0.35)];
+    background: linear-gradient(135deg, #E8C76A 0%, #C9A84C 100%);
+  }
+
+  /* Ghost button */
+  .btn-ghost {
+    @apply bg-transparent text-white/70 border border-white/20 rounded font-semibold cursor-pointer transition-all duration-200 uppercase tracking-[2px] font-condensed backdrop-blur;
+  }
+  .btn-ghost:hover {
+    @apply bg-gold/[0.12];
+  }
+
+  /* Gold input */
+  .input-gold {
+    @apply w-full px-4 py-3 bg-navy-light border border-gold/20 rounded-[10px] text-white text-sm
+           transition-colors duration-200 focus:outline-none focus:border-gold;
+  }
+
+  /* Upload card */
+  .upload-card {
+    @apply border-2 border-dashed border-gold/20 rounded-[14px] p-5 flex flex-col items-center
+           justify-center gap-2 cursor-pointer transition-all duration-200
+           hover:border-gold hover:bg-gold/[0.06] min-h-[140px];
+  }
+  .upload-card.has-file {
+    @apply border-[#2DD4BF] bg-[rgba(45,212,191,0.06)];
+  }
+
+  /* Auth modal input */
+  .auth-input {
+    @apply w-full px-4 py-3 bg-white/[0.06] border border-white/[0.12] rounded-[10px]
+           text-white text-sm placeholder-white/30 font-barlow
+           transition-all duration-200 focus:outline-none focus:border-gold focus:bg-white/[0.09];
+  }
+
+  /* Card */
+  .card-dark {
+    @apply bg-[#0D1A2A]/60 border border-white/[0.04] rounded;
+  }
+
+  /* Glass */
+  .card-glass {
+    @apply bg-white/[0.04] backdrop-blur-md border border-white/[0.08] rounded-[16px];
+  }
+}
+
+/* Calendar day states */
+input[type=date]::-webkit-calendar-picker-indicator {
+  filter: invert(0.7) sepia(1) saturate(2) hue-rotate(10deg);
+  cursor: pointer;
+}
+select option {
+  background: #14253A;
+  color: #FFFFFF;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse-gold {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(201,168,76,0.18); }
+  50%       { box-shadow: 0 0 0 12px transparent; }
+}
+@keyframes checkmark {
+  from { stroke-dashoffset: 100; }
+  to   { stroke-dashoffset: 0; }
+}
+
+.success-ring { animation: pulse-gold 2s ease infinite; }
+.checkmark-path { stroke-dasharray: 100; animation: checkmark .6s .3s ease both; }
+.anim-fade { animation: fadeIn .5s ease both; }
+.anim-slide { animation: slideUp .6s cubic-bezier(.16,1,.3,1) both; }
+
+.font-display {
+  font-family: 'Cormorant Garamond', serif;
+}
+
+.luxury-section-line::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(201,168,76,0.35), transparent);
+}
+
+.ticker-track {
+  animation: ticker 20s linear infinite;
+}
+
+.reveal-lite {
+  animation: fadeSlideUp .8s ease both;
+}
+
+.wa-float {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 220;
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  background: #25D366;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 32px rgba(37,211,102,0.4);
+  animation: waBounce 3s ease infinite;
+}
+
+@keyframes ticker {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes waBounce {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
