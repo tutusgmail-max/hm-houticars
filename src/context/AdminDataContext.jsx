@@ -37,18 +37,11 @@ export function AdminDataProvider({ children }) {
   useEffect(() => {
     const channel = supabase
       .channel('admin-reservations-rt')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'reservations' },
-        () => {
-          refresh()
-        },
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, () => {
+        refresh()
+      })
       .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
+    return () => { supabase.removeChannel(channel) }
   }, [refresh])
 
   const stats = useMemo(() => {
@@ -119,6 +112,7 @@ export function AdminDataProvider({ children }) {
       chartData,
       activity,
       refresh,
+      refreshAll: refresh, // FIX: alias used by AvailabilityCalendar
     }),
     [reservations, users, cars, loading, error, stats, chartData, activity, refresh],
   )

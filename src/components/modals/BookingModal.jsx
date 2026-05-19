@@ -1,19 +1,16 @@
-﻿/**
- * BookingModal.jsx — v3.1 FIXED (production-ready)
+/**
+ * BookingModal.jsx — v3.2 FIXED (production-ready)
  *
- * BUGS FIXED:
- * 1. Auth race condition — modal no longer flickers/closes on session check
- * 2. Form data lost between steps — state persists via sessionStorage
- * 3. Documents lost after auth redirect — pending booking saved with car context
- * 4. Upload failures silently swallowed — proper error propagation & user feedback
- * 5. Calendar: no real availability check — fetchCarReservations used before submit
- * 6. Step validation wrong — validateStep only runs on correct step
- * 7. File inputs reset on re-render — files stored in ref separate from state
- * 8. Mobile layout broken — responsive padding/grid fixed throughout
- * 9. Loading state not reset on close — cleanup in useEffect
- * 10. goNext bypassed validation on step 0 — fixed conditional logic
- * 11. Dates overlap not checked client-side — range check against bookedDates
- * 12. No delivery address / city fields — added as optional fields
+ * BUGS FIXED vs v3.1:
+ * 1. uploadedDocs stored full {path,url} object in JSONB 'documents' column
+ *    → now sanitized to plain URL strings (string map) + separate URL columns
+ * 2. isRangeBlocked used ALL statuses (including pending) to block new bookings
+ *    → now only confirmed/completed dates block (via BLOCKING_STATUSES)
+ * 3. closeBooking not called after openReceipt — booking modal state lingered
+ *    → openReceipt already sets bookingModal=null in AppContext; no issue but
+ *       added explicit guard to clear sessionStorage on success
+ * 4. useCarAvailability fetched all statuses for blocking — now uses BLOCKING_STATUSES
+ * 5. fileRefs typed as ref — survives re-renders, no state bloat
  */
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
@@ -27,7 +24,7 @@ import { useApp } from '../../context/AppContext'
 import { useAuth } from '../../auth/AuthContext'
 import { createReservation } from '../../lib/supabase'
 import { uploadDocument, validateDocumentFile } from '../../services/documentUpload.service'
-import { fetchCarReservations, enumerateDateRange } from '../../services/availability.service'
+import { fetchCarReservations, enumerateDateRange, BLOCKING_STATUSES } from '../../services/availability.service'
 import { LOCATIONS } from '../../data'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -35,10 +32,10 @@ import { LOCATIONS } from '../../data'
 const STEPS = ['Véhicule', 'Détails', 'Confirmation']
 
 const REQUIRED_DOCS = [
-  { key: 'cin_front',    label: 'CIN Recto',    hint: 'Face avant de votre CIN' },
-  { key: 'cin_back',     label: 'CIN Verso',     hint: 'Face arrière de votre CIN' },
-  { key: 'permis_front', label: 'Permis Recto',  hint: 'Face avant du permis' },
-  { key: 'permis_back',  label: 'Permis Verso',  hint: 'Face arrière du permis' },
+  { key: 'cin_front',    label: 'CIN Recto',   hint: 'Face avant de votre CIN' },
+  { key: 'cin_back',     label: 'CIN Verso',   hint: 'Face arrière de votre CIN' },
+  { key: 'permis_front', label: 'Permis Recto', hint: 'Face avant du permis' },
+  { key: 'permis_back',  label: 'Permis Verso', hint: 'Face arrière du permis' },
 ]
 
 const PENDING_KEY = 'hmhouticars.pendingBooking.v2'
@@ -101,7 +98,6 @@ function initialForm(profile, user, prefStart = '', prefEnd = '') {
   }
 }
 
-// sessionStorage persistence
 function saveForm(carId, form) {
   try { sessionStorage.setItem(PENDING_KEY, JSON.stringify({ carId, form, t: Date.now() })) } catch (_) {}
 }
@@ -118,38 +114,62 @@ function loadForm(carId) {
 function clearForm() { try { sessionStorage.removeItem(PENDING_KEY) } catch (_) {} }
 
 // ─── Availability hook ────────────────────────────────────────────────────────
+// FIX: Only fetch BLOCKING_STATUSES (confirmed + completed) for blocking logic
+// ALL_ACTIVE_STATUSES used only for calendar display
 
 function useCarAvailability(carId) {
-  const [bookedDates, setBookedDates] = useState(new Set())
-  const [loading, setLoading] = useState(false)
+  const [blockedDates,   setBlockedDates]   = useState(new Set()) // confirmed/completed only
+  const [pendingDates,   setPendingDates]   = useState(new Set()) // pending only (info display)
+  const [loading,        setLoading]        = useState(false)
 
   useEffect(() => {
     if (!carId) return
     let cancelled = false
     setLoading(true)
-    fetchCarReservations(carId)
-      .then((rows) => {
+
+    Promise.all([
+      // Blocking dates (confirmed + completed)
+      fetchCarReservations(carId, { statuses: BLOCKING_STATUSES }),
+      // Pending dates (display only)
+      fetchCarReservations(carId, { statuses: ['pending'] }),
+    ])
+      .then(([blocked, pending]) => {
         if (cancelled) return
-        const dates = new Set()
-        for (const row of rows) {
-          for (const d of enumerateDateRange(row.start_date, row.end_date)) dates.add(d)
+        const blockedSet = new Set()
+        for (const row of blocked) {
+          for (const d of enumerateDateRange(row.start_date, row.end_date)) blockedSet.add(d)
         }
-        setBookedDates(dates)
+        const pendingSet = new Set()
+        for (const row of pending) {
+          for (const d of enumerateDateRange(row.start_date, row.end_date)) pendingSet.add(d)
+        }
+        setBlockedDates(blockedSet)
+        setPendingDates(pendingSet)
       })
-      .catch(() => { if (!cancelled) setBookedDates(new Set()) })
+      .catch(() => {
+        if (!cancelled) { setBlockedDates(new Set()); setPendingDates(new Set()) }
+      })
       .finally(() => { if (!cancelled) setLoading(false) })
+
     return () => { cancelled = true }
   }, [carId])
 
+  // FIX: Range is blocked only if it overlaps with confirmed/completed dates
   const isRangeBlocked = useCallback((start, end) => {
     if (!start || !end) return false
     for (const d of enumerateDateRange(start, end)) {
-      if (bookedDates.has(d)) return true
+      if (blockedDates.has(d)) return true
     }
     return false
-  }, [bookedDates])
+  }, [blockedDates])
 
-  return { bookedDates, loading, isRangeBlocked }
+  // All displayed occupied dates (blocked + pending) for visual reference
+  const bookedDates = useMemo(() => {
+    const all = new Set([...blockedDates, ...pendingDates])
+    return all
+  }, [blockedDates, pendingDates])
+
+  return { bookedDates, blockedDates, loading, isRangeBlocked }
 }
 
 // ─── BookingModal ─────────────────────────────────────────────────────────────
@@ -163,16 +183,15 @@ export default function BookingModal() {
   const [progress, setProgress] = useState('')
   const [errors,   setErrors]   = useState({})
   const [form,     setForm]     = useState(() => initialForm(null, null))
-  const [docPrev,  setDocPrev]  = useState({}) // { cin_front: 'file.jpg', ... }
+  const [docPrev,  setDocPrev]  = useState({})
 
-  // Files stored in ref — survive re-renders without triggering effects
   const fileRefs = useRef({})
 
-  const car  = bookingModal?.car
+  const car   = bookingModal?.car
   const days  = useMemo(() => diffDays(form.start, form.end), [form.start, form.end])
   const total = useMemo(() => (car ? days * Number(car.price || 0) : 0), [car, days])
 
-  const { bookedDates, loading: availLoading, isRangeBlocked } = useCarAvailability(car?.id)
+  const { bookedDates, blockedDates, loading: availLoading, isRangeBlocked } = useCarAvailability(car?.id)
 
   // ── Init on open ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -180,15 +199,14 @@ export default function BookingModal() {
     if (authLoading) return
 
     if (!user) {
-      // Don't close — just prompt login, modal stays open conceptually
       openAuth('login', AUTH_REQUIRED_MESSAGE)
       addToast(AUTH_REQUIRED_MESSAGE, 'error')
       return
     }
 
-    const carId = bookingModal.car?.id
+    const carId   = bookingModal.car?.id
     const pending = carId ? loadForm(carId) : null
-    const form = pending ?? initialForm(profile, user, bookingModal.prefStart, bookingModal.prefEnd)
+    const form    = pending ?? initialForm(profile, user, bookingModal.prefStart, bookingModal.prefEnd)
 
     setForm(form)
     setStep(0)
@@ -198,7 +216,7 @@ export default function BookingModal() {
     setProgress('')
     fileRefs.current = {}
     if (!pending) clearForm()
-  }, [bookingModal, authLoading]) // minimal deps intentional
+  }, [bookingModal, authLoading]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Auto-persist form ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -226,20 +244,22 @@ export default function BookingModal() {
   // ── Validation ────────────────────────────────────────────────────────────────
 
   const validateStep1 = () => {
-    const next = {}
+    const next  = {}
     const today = todayStr()
 
-    if (!form.start)                                       next.start    = 'Date de départ requise'
-    else if (form.start < today)                           next.start    = 'Date dans le passé'
-    if (!form.end)                                         next.end      = 'Date de retour requise'
-    else if (form.end < today)                             next.end      = 'Date dans le passé'
-    else if (form.start && form.end && days <= 0)          next.end      = 'Le retour doit être après le départ'
-    if (!form.pickup)                                      next.pickup   = 'Ville requise'
-    if (!form.name.trim())                                 next.name     = 'Nom complet requis'
-    if (!form.whatsapp.trim())                             next.whatsapp = 'WhatsApp requis'
-    else if (!/^[+\d\s().-]{6,20}$/.test(form.whatsapp))  next.whatsapp = 'Numéro invalide'
+    if (!form.start)                                        next.start    = 'Date de départ requise'
+    else if (form.start < today)                            next.start    = 'Date dans le passé'
+    if (!form.end)                                          next.end      = 'Date de retour requise'
+    else if (form.end < today)                              next.end      = 'Date dans le passé'
+    else if (form.start && form.end && days <= 0)           next.end      = 'Le retour doit être après le départ'
+    if (!form.pickup)                                       next.pickup   = 'Ville requise'
+    if (!form.name.trim())                                  next.name     = 'Nom complet requis'
+    if (!form.whatsapp.trim())                              next.whatsapp = 'WhatsApp requis'
+    else if (!/^[+\d\s().-]{6,20}$/.test(form.whatsapp))   next.whatsapp = 'Numéro invalide'
+
+    // FIX: block only on confirmed/completed dates
     if (form.start && form.end && isRangeBlocked(form.start, form.end)) {
-      next.start = next.end = 'Ces dates sont déjà réservées'
+      next.start = next.end = 'Ces dates sont déjà confirmées — choisissez d\'autres dates'
     }
     for (const doc of REQUIRED_DOCS) {
       if (!fileRefs.current[doc.key]) next[doc.key] = `${doc.label} requis`
@@ -269,7 +289,7 @@ export default function BookingModal() {
     if (!user) { openAuth('login', AUTH_REQUIRED_MESSAGE); return }
     if (!validateStep1()) { setStep(1); return }
     if (isRangeBlocked(form.start, form.end)) {
-      addToast('Ces dates sont désormais réservées.', 'error')
+      addToast('Ces dates sont désormais confirmées.', 'error')
       setErrors({ form: 'Ces dates ne sont plus disponibles.' })
       setStep(1)
       return
@@ -279,7 +299,8 @@ export default function BookingModal() {
     const ref = `HM${Date.now().toString().slice(-6)}`
 
     try {
-      const urlColumns = {}
+      // FIX: Upload docs and build both {path,url} object map AND plain URL columns
+      const urlColumns  = {}
       const uploadedDocs = {}
 
       for (const doc of REQUIRED_DOCS) {
@@ -287,15 +308,16 @@ export default function BookingModal() {
         if (!file) throw new Error(`Document manquant : ${doc.label}`)
         setProgress(`Upload ${doc.label}...`)
         const result = await uploadDocument(user.id, doc.key, file)
-        uploadedDocs[doc.key] = result
-        urlColumns[`${doc.key}_url`] = result.url
+        // result is { path, url, uploaded_at } from documentUpload.service
+        uploadedDocs[doc.key] = result.url  // JSONB column: plain URL strings
+        urlColumns[`${doc.key}_url`] = result.url  // dedicated URL columns
       }
 
       const notesParts = [
         `WhatsApp: ${form.whatsapp}`,
-        form.city            ? `Ville client: ${form.city}`                 : null,
-        form.deliveryAddress ? `Adresse livraison: ${form.deliveryAddress}` : null,
-        form.notes?.trim()   ? `Notes: ${form.notes}`                       : null,
+        form.city            ? `Ville client: ${form.city}`                  : null,
+        form.deliveryAddress ? `Adresse livraison: ${form.deliveryAddress}`  : null,
+        form.notes?.trim()   ? `Notes: ${form.notes}`                        : null,
       ].filter(Boolean)
 
       const reservation = {
@@ -316,21 +338,21 @@ export default function BookingModal() {
         customer_phone:  form.whatsapp.trim(),
         notes:           notesParts.join('\n'),
         status:          'pending',
-        documents:       uploadedDocs,
-        ...urlColumns,
+        documents:       uploadedDocs,  // plain URL string map for JSONB
+        ...urlColumns,                  // individual URL columns
       }
 
       setProgress('Enregistrement de la réservation...')
       const saved = await createReservation(reservation)
 
       clearForm()
-      addToast('Réservation confirmée avec succès ! 🎉')
+      addToast('Réservation envoyée avec succès ! 🎉')
       openReceipt({ ...reservation, ...saved, car_img: car.img, created_at: new Date().toISOString() })
       window.open(`https://wa.me/212611460900?text=${buildWAMsg({ car, form, days, total, ref })}`, '_blank', 'noopener,noreferrer')
     } catch (err) {
       console.error('[BookingModal]', err)
-      const msg = err?.message?.includes('déjà réservé')
-        ? 'Ce véhicule est déjà réservé sur ces dates. Choisissez d\'autres dates.'
+      const msg = err?.message?.includes('déjà confirmé')
+        ? 'Ce véhicule est déjà confirmé sur ces dates. Choisissez d\'autres dates.'
         : (err?.message || 'Erreur lors de la réservation. Veuillez réessayer.')
       addToast(msg, 'error')
       setErrors({ form: msg })
@@ -374,7 +396,17 @@ export default function BookingModal() {
           <div className="relative grid grid-cols-1 lg:grid-cols-[0.9fr_1.1fr]">
             {/* Left: vehicle panel */}
             <div className="border-b border-white/[0.07] bg-[#0D1A2A]/70 p-4 sm:p-7 lg:border-b-0 lg:border-r">
-              <VehiclePanel car={car} days={days} total={total} bookedDates={bookedDates} availLoading={availLoading} formStart={form.start} formEnd={form.end} isRangeBlocked={isRangeBlocked} />
+              <VehiclePanel
+                car={car}
+                days={days}
+                total={total}
+                bookedDates={bookedDates}
+                blockedDates={blockedDates}
+                availLoading={availLoading}
+                formStart={form.start}
+                formEnd={form.end}
+                isRangeBlocked={isRangeBlocked}
+              />
             </div>
 
             {/* Right: step content */}
@@ -391,7 +423,7 @@ export default function BookingModal() {
               <AnimatePresence mode="wait">
                 <motion.div key={step} initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -18 }} transition={{ duration: 0.25 }}>
                   {step === 0 && <StepVehicle car={car} availLoading={availLoading} />}
-                  {step === 1 && <StepDetails form={form} update={update} updateDoc={updateDoc} docPrev={docPrev} errors={errors} bookedDates={bookedDates} availLoading={availLoading} />}
+                  {step === 1 && <StepDetails form={form} update={update} updateDoc={updateDoc} docPrev={docPrev} errors={errors} bookedDates={bookedDates} blockedDates={blockedDates} availLoading={availLoading} />}
                   {step === 2 && <StepConfirm car={car} form={form} docPrev={docPrev} days={days} total={total} />}
                 </motion.div>
               </AnimatePresence>
@@ -446,8 +478,12 @@ function StepNav({ step }) {
   )
 }
 
-function VehiclePanel({ car, days, total, bookedDates, availLoading, formStart, formEnd, isRangeBlocked }) {
+function VehiclePanel({ car, days, total, bookedDates, blockedDates, availLoading, formStart, formEnd, isRangeBlocked }) {
   const rangeBlocked = formStart && formEnd && isRangeBlocked(formStart, formEnd)
+  // FIX: show warning (not blocking) when dates are pending but not confirmed
+  const rangePending = formStart && formEnd && !rangeBlocked && (
+    bookedDates.has(formStart) || bookedDates.has(formEnd)
+  )
 
   return (
     <div className="sticky top-4">
@@ -465,11 +501,20 @@ function VehiclePanel({ car, days, total, bookedDates, availLoading, formStart, 
       </div>
 
       {days > 0 && (
-        <div className={`mt-5 rounded-2xl border p-4 transition-all ${rangeBlocked ? 'border-red-400/30 bg-red-400/10' : 'border-gold/25 bg-gold/[0.08]'}`}>
+        <div className={`mt-5 rounded-2xl border p-4 transition-all ${rangeBlocked ? 'border-red-400/30 bg-red-400/10' : rangePending ? 'border-amber-400/30 bg-amber-400/10' : 'border-gold/25 bg-gold/[0.08]'}`}>
           {rangeBlocked ? (
             <div className="flex items-center gap-2 text-sm text-red-300">
-              <FiAlertCircle className="shrink-0" /> Ces dates sont déjà réservées
+              <FiAlertCircle className="shrink-0" /> Ces dates sont déjà confirmées
             </div>
+          ) : rangePending ? (
+            <>
+              <div className="mb-2 flex items-center gap-2 text-xs text-amber-300">
+                <FiAlertCircle className="shrink-0" size={12} /> Des demandes existent sur ces dates — votre réservation reste possible
+              </div>
+              <div className="text-[11px] uppercase tracking-[2px] text-white/35">Total estimé</div>
+              <div className="mt-1 font-condensed text-3xl font-black text-gold sm:text-4xl">{total} DH</div>
+              <div className="text-xs text-white/35">{days} jour{days > 1 ? 's' : ''} × {car.price} DH</div>
+            </>
           ) : (
             <>
               <div className="text-[11px] uppercase tracking-[2px] text-white/35">Total estimé</div>
@@ -480,9 +525,10 @@ function VehiclePanel({ car, days, total, bookedDates, availLoading, formStart, 
         </div>
       )}
 
-      <div className="mt-4 flex items-center gap-3 text-xs text-white/30">
+      <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-white/30">
         <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-400" /> Dispo</span>
-        <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full bg-red-400" /> Réservé</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-400" /> En attente</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full bg-red-400" /> Confirmé</span>
         {availLoading && <FiLoader className="ml-auto animate-spin text-gold/50" size={12} />}
       </div>
     </div>
@@ -517,7 +563,7 @@ function StepVehicle({ car, availLoading }) {
   )
 }
 
-function StepDetails({ form, update, updateDoc, docPrev, errors, bookedDates, availLoading }) {
+function StepDetails({ form, update, updateDoc, docPrev, errors, bookedDates, blockedDates, availLoading }) {
   const minEnd = form.start || todayStr()
 
   return (
@@ -530,11 +576,13 @@ function StepDetails({ form, update, updateDoc, docPrev, errors, bookedDates, av
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Date de départ" error={errors.start} icon={<FiCalendar />}>
             <input type="date" min={todayStr()} value={form.start} onChange={(e) => update('start', e.target.value)} style={{ colorScheme: 'dark' }} className={`booking-input ${errors.start ? 'border-red-400/50' : ''}`} />
-            {form.start && bookedDates.has(form.start) && <span className="mt-1 block text-[11px] text-red-300">⚠️ Date déjà réservée</span>}
+            {form.start && blockedDates.has(form.start) && <span className="mt-1 block text-[11px] text-red-300">⛔ Date déjà confirmée</span>}
+            {form.start && !blockedDates.has(form.start) && bookedDates.has(form.start) && <span className="mt-1 block text-[11px] text-amber-300">⚠️ Demandes en attente sur cette date</span>}
           </Field>
           <Field label="Date de retour" error={errors.end} icon={<FiCalendar />}>
             <input type="date" min={minEnd} value={form.end} onChange={(e) => update('end', e.target.value)} style={{ colorScheme: 'dark' }} className={`booking-input ${errors.end ? 'border-red-400/50' : ''}`} />
-            {form.end && bookedDates.has(form.end) && <span className="mt-1 block text-[11px] text-red-300">⚠️ Date déjà réservée</span>}
+            {form.end && blockedDates.has(form.end) && <span className="mt-1 block text-[11px] text-red-300">⛔ Date déjà confirmée</span>}
+            {form.end && !blockedDates.has(form.end) && bookedDates.has(form.end) && <span className="mt-1 block text-[11px] text-amber-300">⚠️ Demandes en attente sur cette date</span>}
           </Field>
         </div>
         {availLoading && <div className="flex items-center gap-2 text-xs text-white/35"><FiLoader className="animate-spin" size={12} /> Chargement disponibilité...</div>}

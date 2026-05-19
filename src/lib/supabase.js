@@ -9,10 +9,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
   )
 }
 
-export const supabase = createClient(
-  supabaseUrl,
-  supabaseAnonKey
-)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 // ─── Auth helpers ────────────────────────────────────────────────────────────
 
@@ -20,13 +17,10 @@ export async function signUp({ email, password, fullName, phone }) {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: {
-      data: { full_name: fullName, phone },
-    },
+    options: { data: { full_name: fullName, phone } },
   })
   if (error) throw error
 
-  // Insert profile row
   if (data.user) {
     const { error: profileError } = await supabase.from('profiles').upsert({
       id: data.user.id,
@@ -35,9 +29,7 @@ export async function signUp({ email, password, fullName, phone }) {
       email,
       role: 'client',
     }, { onConflict: 'id' })
-    if (profileError) {
-      console.warn('[signUp] profile upsert:', profileError.message)
-    }
+    if (profileError) console.warn('[signUp] profile upsert:', profileError.message)
   }
   return data
 }
@@ -61,32 +53,24 @@ export async function resetPassword(email) {
 }
 
 export async function getProfile(userId) {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .single()
+  const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single()
   if (error) throw error
   return data
 }
 
 export async function updateProfile(userId, updates) {
-  const { error } = await supabase
-    .from('profiles')
-    .update(updates)
-    .eq('id', userId)
+  const { error } = await supabase.from('profiles').update(updates).eq('id', userId)
   if (error) throw error
 }
 
 // ─── Reservations ────────────────────────────────────────────────────────────
 
-/** Expand reservation date ranges into individual YYYY-MM-DD strings (inclusive). */
 export function expandReservationDates(ranges) {
   const dates = new Set()
   for (const row of ranges || []) {
     if (!row?.start_date || !row?.end_date) continue
     const start = new Date(`${row.start_date}T00:00:00`)
-    const end = new Date(`${row.end_date}T00:00:00`)
+    const end   = new Date(`${row.end_date}T00:00:00`)
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) continue
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       dates.add(d.toISOString().split('T')[0])
@@ -95,28 +79,27 @@ export function expandReservationDates(ranges) {
   return [...dates]
 }
 
-/** Booked days for a car (pending + confirmed) — used by availability calendar. */
+/** Booked days for a car — only confirmed/completed block new bookings */
 export async function getCarBookedDates(carId) {
   const { data, error } = await supabase
     .from('reservations')
     .select('start_date, end_date')
     .eq('car_id', carId)
-    .in('status', ['pending', 'confirmed'])
+    .in('status', ['confirmed', 'completed'])
   if (error) throw error
   return expandReservationDates(data)
 }
 
-/** Storage paths or URLs for jsonb documents column */
 export function sanitizeReservationDocuments(documents) {
   if (!documents || typeof documents !== 'object') return {}
   const out = {}
   for (const [key, value] of Object.entries(documents)) {
     if (typeof value === 'string' && value.length > 0) out[key] = value
+    else if (value && typeof value === 'object' && value.url) out[key] = value.url
   }
   return out
 }
 
-/** Map UI reservation payload → PostgREST row (supports v3 + legacy column names). */
 export function mapReservationToRow(reservation) {
   const docUrls = sanitizeReservationDocuments(reservation.documents)
   const notesParts = []
@@ -127,37 +110,34 @@ export function mapReservationToRow(reservation) {
     notesParts.push(`Documents: ${JSON.stringify(docUrls)}`)
   }
 
-  const row = {
-    user_id: reservation.user_id,
-    car_id: reservation.car_id,
-    car_name: reservation.car_name,
-    car_price: reservation.car_price,
-    start_date: reservation.start_date,
-    end_date: reservation.end_date,
-    days: reservation.days,
-    payment_method: reservation.payment_method,
-    customer_name: reservation.customer_name,
-    customer_email: reservation.customer_email,
-    customer_phone: reservation.customer_phone,
-    status: reservation.status ?? 'pending',
-    notes: notesParts.length ? notesParts.join('\n') : null,
-    cin_front_url: reservation.cin_front_url ?? null,
-    cin_back_url: reservation.cin_back_url ?? null,
+  return {
+    user_id:          reservation.user_id,
+    car_id:           reservation.car_id,
+    car_name:         reservation.car_name,
+    car_price:        reservation.car_price,
+    start_date:       reservation.start_date,
+    end_date:         reservation.end_date,
+    days:             reservation.days,
+    payment_method:   reservation.payment_method,
+    customer_name:    reservation.customer_name,
+    customer_email:   reservation.customer_email,
+    customer_phone:   reservation.customer_phone,
+    status:           reservation.status ?? 'pending',
+    notes:            notesParts.length ? notesParts.join('\n') : null,
+    cin_front_url:    reservation.cin_front_url  ?? null,
+    cin_back_url:     reservation.cin_back_url   ?? null,
     permis_front_url: reservation.permis_front_url ?? null,
-    permis_back_url: reservation.permis_back_url ?? null,
-    reference: reservation.ref,
-    total_price: reservation.total,
-    ref: reservation.ref,
-    total: reservation.total,
-    pickup_location: reservation.pickup_location,
-    return_location: reservation.return_location,
-    documents: docUrls,
+    permis_back_url:  reservation.permis_back_url  ?? null,
+    reference:        reservation.ref,
+    total_price:      reservation.total,
+    ref:              reservation.ref,
+    total:            reservation.total,
+    pickup_location:  reservation.pickup_location,
+    return_location:  reservation.return_location,
+    documents:        docUrls,
   }
-
-  return row
 }
 
-/** Map DB row → UI shape used by dashboards and receipt modal. */
 export function mapRowToReservation(row) {
   if (!row) return row
   let pickup_location = row.pickup_location
@@ -174,26 +154,27 @@ export function mapRowToReservation(row) {
   }
   return {
     ...row,
-    ref: row.ref ?? row.reference ?? '—',
-    total: row.total ?? row.total_price ?? 0,
+    ref:             row.ref ?? row.reference ?? '—',
+    total:           row.total ?? row.total_price ?? 0,
     pickup_location: pickup_location ?? '—',
     return_location: return_location ?? '—',
   }
 }
 
 export async function createReservation(reservation) {
+  // FIX: Only check against confirmed/completed — pending doesn't block new requests
   const { data: overlaps, error: overlapError } = await supabase
     .from('reservations')
     .select('id')
     .eq('car_id', reservation.car_id)
-    .in('status', ['pending', 'confirmed'])
+    .in('status', ['confirmed', 'completed'])
     .lte('start_date', reservation.end_date)
     .gte('end_date', reservation.start_date)
     .limit(1)
 
   if (overlapError) throw overlapError
   if (overlaps?.length) {
-    throw new Error('Ce véhicule est déjà réservé ou en attente sur ces dates.')
+    throw new Error('Ce véhicule est déjà confirmé sur ces dates. Choisissez d\'autres dates.')
   }
 
   const baseRow = mapReservationToRow(reservation)
@@ -202,16 +183,9 @@ export async function createReservation(reservation) {
   // Retry without v3-only columns if schema cache lacks them
   if (error?.code === 'PGRST204') {
     const {
-      ref: _r,
-      total: _t,
-      pickup_location: _p,
-      return_location: _rl,
-      documents: _d,
-      cin_front_url: _cf,
-      cin_back_url: _cb,
-      permis_front_url: _pf,
-      permis_back_url: _pb,
-      ...legacyRow
+      ref: _r, total: _t, pickup_location: _p, return_location: _rl,
+      documents: _d, cin_front_url: _cf, cin_back_url: _cb,
+      permis_front_url: _pf, permis_back_url: _pb, ...legacyRow
     } = baseRow
     ;({ data, error } = await supabase.from('reservations').insert(legacyRow).select().single())
   }
@@ -255,7 +229,7 @@ export async function deleteReservation(id) {
 // ─── Document upload ─────────────────────────────────────────────────────────
 
 export async function uploadDocument(userId, docType, file) {
-  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
+  const ext  = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
   const path = `${userId}/${docType}.${ext}`
   const { error } = await supabase.storage.from('documents').upload(path, file, {
     cacheControl: '3600',
