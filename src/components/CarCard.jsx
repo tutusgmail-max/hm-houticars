@@ -3,7 +3,6 @@ import { motion } from 'framer-motion'
 import { FiCheckCircle, FiSettings, FiUsers } from 'react-icons/fi'
 import { BsFuelPump } from 'react-icons/bs'
 import { useApp } from '../context/AppContext'
-import { useAuth } from '../auth/AuthContext'
 import LazyImage from './ui/LazyImage'
 
 const BADGE_COLORS = {
@@ -16,16 +15,11 @@ const BADGE_COLORS = {
 }
 
 function CarCard({ car, delay = 0 }) {
-  const { openBooking, openAuth } = useApp()
-  const { user } = useAuth()
+  const { openBooking } = useApp()
 
   const handleReserve = useCallback(() => {
-    if (!user) {
-      openAuth('login')
-      return
-    }
     openBooking(car)
-  }, [user, openAuth, openBooking, car])
+  }, [openBooking, car])
 
   const badge = BADGE_COLORS[car.badge] || { bg: '#C9A84C', text: '#0B1623' }
 

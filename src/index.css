@@ -39,6 +39,28 @@
   ::-webkit-scrollbar-track { background: #0B1623; }
   ::-webkit-scrollbar-thumb { background: #C9A84C; border-radius: 2px; }
 
+  .booking-input {
+    width: 100%;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.035);
+    color: #fff;
+    padding: 13px 15px;
+    border-radius: 12px;
+    outline: none;
+    font-size: 14px;
+    transition: border-color .2s ease, background .2s ease, box-shadow .2s ease;
+  }
+
+  .booking-input:focus {
+    border-color: rgba(201,168,76,0.45);
+    background: rgba(255,255,255,0.055);
+    box-shadow: 0 0 0 4px rgba(201,168,76,0.08);
+  }
+
+  .booking-input::placeholder {
+    color: rgba(255,255,255,0.25);
+  }
+
   /* Section labels */
   .section-label {
     @apply inline-block text-gold text-[11px] font-bold tracking-[2.5px] uppercase mb-3 border border-gold/25 bg-gold/10 px-4 py-1.5 rounded-full;
