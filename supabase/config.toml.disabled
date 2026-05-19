@@ -11,7 +11,8 @@
 name = "hmhouticars-v3"
 
 # Version of Supabase being used
-version = 1.0.0
+# Use a string for semantic versions to avoid TOML float parsing issues
+version = "1.0.0"
 
 # Organization ID (for authentication)
 # organization_id = "YOUR_ORG_ID"
