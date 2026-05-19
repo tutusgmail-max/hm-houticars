@@ -4,6 +4,13 @@ import { FALLBACK_CARS, getCarById as getFallbackCarById } from '../data'
 
 const CarsContext = createContext(null)
 
+function normalizePublicCars(rows = []) {
+  return FALLBACK_CARS.map((fallback) => {
+    const row = rows.find((car) => car.name?.toLowerCase() === fallback.name.toLowerCase())
+    return row ? { ...fallback, ...row, price: fallback.price, fuel: fallback.fuel, img: fallback.img, available: row.available !== false } : fallback
+  })
+}
+
 export function CarsProvider({ children }) {
   const [cars, setCars] = useState(FALLBACK_CARS)
   const [loading, setLoading] = useState(true)
@@ -14,7 +21,7 @@ export function CarsProvider({ children }) {
     setError(null)
     try {
       const data = await fetchAvailableCars()
-      if (data?.length) setCars(data)
+      setCars(normalizePublicCars(data))
     } catch (err) {
       console.warn('[CarsContext]', err?.message)
       setError(err?.message || 'Impossible de charger la flotte')

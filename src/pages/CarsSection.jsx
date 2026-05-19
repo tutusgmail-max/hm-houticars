@@ -50,7 +50,10 @@ export default function CarsSection() {
           ))}
         </div>
 
-        <motion.div layout className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-0.5 relative z-10">
+        <motion.div
+          layout
+          className="relative z-10 flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth pb-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
           {loading
             ? [1, 2, 3, 4, 5, 6].map((i) => <CarCardSkeleton key={i} />)
             : filtered.map((car, i) => (
@@ -60,11 +63,20 @@ export default function CarsSection() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.35, delay: i * 0.06 }}
+                  className="min-w-[86%] snap-start sm:min-w-[420px] lg:min-w-[440px] xl:min-w-[450px]"
                 >
                   <CarCard car={car} delay={i} />
                 </motion.div>
               ))}
         </motion.div>
+
+        {!loading && filtered.length > 1 && (
+          <div className="relative z-10 mt-2 flex justify-center gap-2">
+            {filtered.map((car) => (
+              <span key={car.id} className="h-1 w-8 rounded-full bg-gold/25" />
+            ))}
+          </div>
+        )}
       </div>
     </section>
   )

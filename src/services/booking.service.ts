@@ -4,7 +4,7 @@
  * Handles reservation validation, confirmation, and contract generation
  */
 
-import { supabase } from '../../supabase/supabase-client'
+import { supabase } from '../lib/supabase'
 
 // ============================================================
 // TYPES
