@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { FiCheckCircle, FiSettings, FiUsers } from 'react-icons/fi'
 import { BsFuelPump } from 'react-icons/bs'
 import { useApp } from '../context/AppContext'
+import { getCarDisplayImage } from '../services/cars.service'
 import LazyImage from './ui/LazyImage'
 
 const BADGE_COLORS = {
@@ -66,7 +67,7 @@ function CarCard({ car, delay = 0 }) {
           </span>
         )}
         <LazyImage
-          src={car.img}
+          src={getCarDisplayImage(car)}
           alt={car.name}
           className="object-contain transition-transform duration-500 group-hover:scale-105"
           style={{ width: '100%', height: 220, padding: 20, filter: 'drop-shadow(0 30px 50px rgba(0,0,0,0.6))' }}

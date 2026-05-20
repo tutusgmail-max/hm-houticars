@@ -33,11 +33,14 @@ function parseImagesField(images) {
 }
 
 export function resolveCarImages(row) {
+  if (isDaciaSandero(row)) {
+    return { images: [DACIA_SANDERO_IMAGE], img: DACIA_SANDERO_IMAGE }
+  }
+
   let images = parseImagesField(row?.images)
   const legacyImg = typeof row?.img === 'string' ? row.img.trim() : ''
   if (images.length === 0 && legacyImg) images = [legacyImg]
-  if (images.length === 0 && isDaciaSandero(row)) images = [DACIA_SANDERO_IMAGE]
-  const img = images[0] || (isDaciaSandero(row) ? DACIA_SANDERO_IMAGE : '')
+  const img = images[0] || ''
   return { images, img }
 }
 
