@@ -7,6 +7,7 @@ import {
   updateCar,
   deleteCar,
   uploadCarImages,
+  getCarDisplayImage,
 } from '../../services/cars.service'
 import { useApp } from '../../context/AppContext'
 import { useCars } from '../../context/CarsContext'
@@ -192,7 +193,7 @@ export default function FleetManagement() {
           {paged.map((car) => (
             <GlassCard key={car.id ?? `fleet-${car.name}`} hover className="overflow-hidden">
               <div className="h-44 bg-black/20 flex items-center justify-center p-2">
-                <LazyImage src={car.img} alt={car.name} className="h-full w-full" />
+                <LazyImage src={getCarDisplayImage(car)} alt={car.name} className="h-full w-full" />
               </div>
               <div className="p-5 space-y-3">
                 <motion.div className="flex justify-between items-start gap-2">

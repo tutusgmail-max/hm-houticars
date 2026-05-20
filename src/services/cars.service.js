@@ -3,13 +3,54 @@
  */
 import { supabase } from '../lib/supabase'
 import { compressImage } from '../utils/compressImage'
+import { DACIA_SANDERO_IMAGE } from '../data'
 
 const IMAGE_BUCKET = 'image'
 const CAR_IMAGE_PREFIX = 'houti cars'
 
+export function isDaciaSandero(car) {
+  const label = `${car?.name || ''} ${car?.brand || ''}`.toLowerCase()
+  return label.includes('sandero') || Number(car?.id) === 1
+}
+
+function parseImagesField(images) {
+  if (Array.isArray(images)) {
+    return images.map((u) => (typeof u === 'string' ? u.trim() : '')).filter(Boolean)
+  }
+  if (typeof images === 'string') {
+    const raw = images.trim()
+    if (!raw) return []
+    try {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) {
+        return parsed.map((u) => (typeof u === 'string' ? u.trim() : '')).filter(Boolean)
+      }
+    } catch {
+      if (raw.startsWith('http')) return [raw]
+    }
+  }
+  return []
+}
+
+export function resolveCarImages(row) {
+  let images = parseImagesField(row?.images)
+  const legacyImg = typeof row?.img === 'string' ? row.img.trim() : ''
+  if (images.length === 0 && legacyImg) images = [legacyImg]
+  if (images.length === 0 && isDaciaSandero(row)) images = [DACIA_SANDERO_IMAGE]
+  const img = images[0] || (isDaciaSandero(row) ? DACIA_SANDERO_IMAGE : '')
+  return { images, img }
+}
+
+/** Primary image URL for fleet, booking, and admin UI */
+export function getCarDisplayImage(car) {
+  if (!car) return ''
+  const { img } = resolveCarImages(car)
+  return img
+}
+
 export function mapCarRow(row) {
   if (!row) return null
-  const images = Array.isArray(row.images) ? row.images : []
+  const { images, img } = resolveCarImages(row)
   return {
     id: row.id,
     name: row.name,
@@ -20,7 +61,7 @@ export function mapCarRow(row) {
     seats: row.seats ?? 5,
     fuel: row.fuel || 'Essence',
     trans: row.transmission || 'Manuelle',
-    img: images[0] || '',
+    img,
     images,
     available: row.available !== false,
     badge: row.badge || null,
@@ -42,7 +83,7 @@ export function carToDbPayload(car) {
     fuel: car.fuel || 'Essence',
     seats: Number(car.seats) || 5,
     available: car.available !== false,
-    images: car.images?.length ? car.images : car.img ? [car.img] : [],
+    images: resolveCarImages(car).images,
     badge: car.badge || null,
     specs: car.specs || [],
     sort_order: car.sort_order ?? 0,

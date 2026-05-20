@@ -22,6 +22,7 @@ import { uploadDocument, validateDocumentFile } from '../../services/documentUpl
 import { fetchCarReservations, enumerateDateRange, BLOCKING_STATUSES } from '../../services/availability.service'
 import { updateProfileData } from '../../services/profile.service'
 import { LOCATIONS } from '../../data'
+import { getCarDisplayImage } from '../../services/cars.service'
 
 const STEPS = ['Véhicule', 'Détails', 'Confirmation']
 
@@ -511,7 +512,7 @@ export default function BookingModal() {
       const saved = await createReservation(reservation)
       clearSession()
       addToast('Réservation envoyée avec succès ! 🎉')
-      openReceipt({...reservation,...saved,car_img:car.img,created_at:new Date().toISOString()})
+      openReceipt({...reservation,...saved,car_img:getCarDisplayImage(car),created_at:new Date().toISOString()})
       window.open(`https://wa.me/212611460900?text=${buildWA({car,form,days,total,ref})}`, '_blank', 'noopener,noreferrer')
     } catch (err) {
       const msg = err?.message?.includes('déjà confirmé')
@@ -636,7 +637,7 @@ function VehiclePanel({ car, days, total, bookedDates, blockedDates, availLoadin
   return (
     <div className="sticky top-4">
       <div className="mb-5 flex min-h-[180px] items-center justify-center rounded-[22px] border border-white/[0.06] bg-gradient-to-br from-[#111F31] to-[#08111F] p-5 sm:min-h-[240px]">
-        <img src={car.img} alt={car.name} loading="lazy" className="h-[150px] w-full object-contain drop-shadow-[0_20px_35px_rgba(0,0,0,0.6)] sm:h-[190px]" />
+        <img src={getCarDisplayImage(car)} alt={car.name} loading="lazy" className="h-[150px] w-full object-contain drop-shadow-[0_20px_35px_rgba(0,0,0,0.6)] sm:h-[190px]" />
       </div>
       <div className="mb-2 font-condensed text-[11px] font-bold uppercase tracking-[3px] text-gold">Véhicule sélectionné</div>
       <h3 className="font-display text-3xl font-bold leading-none text-white sm:text-4xl">{car.name}</h3>

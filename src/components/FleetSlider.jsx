@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { FiChevronLeft, FiChevronRight, FiUsers, FiSettings, FiCheck } from 'react-icons/fi'
 import { BsFuelPump } from 'react-icons/bs'
 import { useApp } from '../context/AppContext'
+import { getCarDisplayImage } from '../services/cars.service'
 import LazyImage from './ui/LazyImage'
 
 /* ─── Spec Pill ─────────────────────────────────────────────────────────────── */
@@ -97,7 +98,7 @@ const Thumb = memo(({ car, active, onClick }) => (
     }}
   >
     <img
-      src={car.img}
+      src={getCarDisplayImage(car)}
       alt={car.name}
       style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '6px', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.5))' }}
       loading="lazy"
@@ -217,7 +218,7 @@ function CarCard({ car, direction }) {
               )}
 
               <LazyImage
-                src={car.img}
+                src={getCarDisplayImage(car)}
                 alt={car.name}
                 className="object-contain"
                 style={{

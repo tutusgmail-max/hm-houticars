@@ -2,8 +2,10 @@
 const SUPABASE_CAR_IMG =
   'https://cmoioidgxealxfirkssc.supabase.co/storage/v1/object/public/image/houti%20cars'
 
-const DACIA_SANDERO_IMG =
+export const DACIA_SANDERO_IMAGE =
   'https://ertdqfavrkomikszagtc.supabase.co/storage/v1/object/public/voiture/houti%20cars/dacia%20sandero.jpg'
+
+const DACIA_SANDERO_IMG = DACIA_SANDERO_IMAGE
 
 /** Static fallback when Supabase cars table is unavailable */
 export const FALLBACK_CARS = [
