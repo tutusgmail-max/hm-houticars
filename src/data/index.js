@@ -2,6 +2,9 @@
 const SUPABASE_CAR_IMG =
   'https://cmoioidgxealxfirkssc.supabase.co/storage/v1/object/public/image/houti%20cars'
 
+const DACIA_SANDERO_IMG =
+  'https://ertdqfavrkomikszagtc.supabase.co/storage/v1/object/public/voiture/houti%20cars/dacia%20sandero.jpg'
+
 /** Static fallback when Supabase cars table is unavailable */
 export const FALLBACK_CARS = [
   {
@@ -13,7 +16,7 @@ export const FALLBACK_CARS = [
     seats: 5,
     fuel: 'Diesel',
     trans: 'Manuelle',
-    img: `${SUPABASE_CAR_IMG}/dacia%20sandero.jpg`,
+    img: DACIA_SANDERO_IMG,
     available: true,
     badge: 'Populaire',
     specs: ['A/C', 'USB', 'Bluetooth'],

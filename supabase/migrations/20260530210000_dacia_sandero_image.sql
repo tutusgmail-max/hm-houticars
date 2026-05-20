@@ -12,7 +12,7 @@ INSERT INTO public.cars (
   'Diesel',
   5,
   true,
-  '["https://cmoioidgxealxfirkssc.supabase.co/storage/v1/object/public/image/houti%20cars/dacia%20sandero.jpg"]'::jsonb,
+  '["https://ertdqfavrkomikszagtc.supabase.co/storage/v1/object/public/voiture/houti%20cars/dacia%20sandero.jpg"]'::jsonb,
   'Citadine économique, idéale pour la ville.'
 )
 ON CONFLICT (id) DO UPDATE SET
