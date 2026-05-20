@@ -1,7 +1,7 @@
-import React from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiPhone, FiUser, FiLogOut, FiGrid } from 'react-icons/fi'
+import { FiPhone, FiUser, FiLogOut, FiGrid, FiChevronDown } from 'react-icons/fi'
 import { FaWhatsapp } from 'react-icons/fa'
 import { useApp } from '../context/AppContext'
 import { useAuth } from '../auth/AuthContext'
@@ -15,6 +15,121 @@ const NAV_ITEMS = [
   { id: 'reviews', label: 'Avis'      },
   { id: 'contact', label: 'Contact'   },
 ]
+
+function profileInitials(profile, email) {
+  const name = profile?.full_name?.trim()
+  if (name) {
+    const parts = name.split(/\s+/).filter(Boolean)
+    if (parts.length >= 2) return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+    return parts[0].slice(0, 2).toUpperCase()
+  }
+  return (email?.[0] || 'U').toUpperCase()
+}
+
+function MonEspaceMenu({ user, profile, isAdmin, navigate, onLogout }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const displayName = profile?.full_name?.split(' ')[0] || 'Mon espace'
+  const initials = profileInitials(profile, user?.email)
+
+  useEffect(() => {
+    const close = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [])
+
+  const go = (path) => {
+    setOpen(false)
+    navigate(path)
+  }
+
+  return (
+    <div ref={ref} className="relative hidden md:block">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className="group flex items-center gap-2.5 pl-1 pr-3 py-1 rounded-full cursor-pointer transition-all duration-300 border border-gold/25 bg-gradient-to-r from-white/[0.07] to-white/[0.02] hover:border-gold/55 hover:shadow-[0_0_28px_rgba(201,168,76,0.22)]"
+      >
+        <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 ring-2 ring-gold/45 ring-offset-2 ring-offset-[#0B1623]">
+          {profile?.avatar_url ? (
+            <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gold to-gold-light text-navy font-condensed font-black text-sm">
+              {initials}
+            </div>
+          )}
+        </div>
+        <div className="text-left hidden lg:block min-w-0">
+          <span className="block text-[9px] uppercase tracking-[2.5px] text-gold/90 font-bold leading-none">
+            Mon espace
+          </span>
+          <span className="block text-white text-[13px] font-semibold leading-tight truncate max-w-[120px]">
+            {displayName}
+          </span>
+        </div>
+        <FiChevronDown
+          className={`text-gold text-base flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            role="menu"
+            initial={{ opacity: 0, y: 8, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.96 }}
+            transition={{ duration: 0.18 }}
+            className="absolute right-0 top-[calc(100%+10px)] w-60 rounded-xl overflow-hidden z-[210] border border-gold/20 shadow-[0_24px_60px_rgba(0,0,0,0.55)]"
+            style={{ background: 'rgba(11,22,35,0.97)', backdropFilter: 'blur(20px)' }}
+          >
+            <div className="px-4 py-3 border-b border-white/[0.06]">
+              <p className="text-white font-semibold text-sm truncate">{profile?.full_name || 'Client HM'}</p>
+              <p className="text-text-muted text-xs truncate">{user?.email}</p>
+              {isAdmin && (
+                <span className="inline-block mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-gold/15 text-gold border border-gold/25">
+                  Administrateur
+                </span>
+              )}
+            </div>
+            <div className="p-1.5 flex flex-col gap-0.5">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => go('/dashboard')}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left text-white text-sm font-semibold bg-transparent border-none cursor-pointer transition-colors hover:bg-gold/[0.12] hover:text-gold"
+              >
+                <FiUser className="text-gold" /> Mon espace
+              </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => go('/admin')}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left text-white/85 text-sm font-medium bg-transparent border-none cursor-pointer transition-colors hover:bg-white/[0.06] hover:text-white"
+                >
+                  <FiGrid className="text-gold" /> Tableau admin
+                </button>
+              )}
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { setOpen(false); onLogout() }}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left text-red-400 text-sm font-medium bg-transparent border-none cursor-pointer transition-colors hover:bg-red-500/10 mt-0.5 border-t border-white/[0.05]"
+              >
+                <FiLogOut /> Déconnexion
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
 
 export default function Navbar() {
   const { activeSection, scrollTo, mobileOpen, setMobileOpen, openAuth, addToast } = useApp()
@@ -120,35 +235,13 @@ export default function Navbar() {
           </a>
 
           {user ? (
-            <div className="hidden md:flex items-center gap-2">
-              {isAdmin && (
-                <button
-                  onClick={() => navigate('/admin')}
-                  className="flex items-center gap-1.5 text-[13px] font-medium transition-colors duration-200 cursor-pointer bg-transparent border-none hover:text-white"
-                  style={{ color: '#8A95A5' }}
-                >
-                  <FiGrid style={{ color: '#C9A84C' }} /> Admin
-                </button>
-              )}
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="flex items-center gap-1.5 text-white font-semibold text-[13px] px-4 py-2 rounded-[10px] cursor-pointer transition-all duration-200 hover:bg-white/[0.14]"
-                style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)' }}
-              >
-                <FiUser style={{ color: '#C9A84C' }} />
-                <span className="hidden sm:inline">
-                  {profile?.full_name?.split(' ')[0] || 'Mon espace'}
-                </span>
-              </button>
-              <button
-                onClick={handleLogout}
-                className="transition-colors cursor-pointer bg-transparent border-none p-1 hover:text-white"
-                style={{ color: '#8A95A5' }}
-                title="Déconnexion"
-              >
-                <FiLogOut />
-              </button>
-            </div>
+            <MonEspaceMenu
+              user={user}
+              profile={profile}
+              isAdmin={isAdmin}
+              navigate={navigate}
+              onLogout={handleLogout}
+            />
           ) : (
             <div className="hidden md:flex items-center gap-2">
               <button
@@ -226,30 +319,47 @@ export default function Navbar() {
               ))}
 
               {user ? (
-                <>
+                <div
+                  className="rounded-xl p-4 mt-2 border border-gold/20"
+                  style={{ background: 'rgba(255,255,255,0.04)' }}
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-11 h-11 rounded-full overflow-hidden ring-2 ring-gold/40 flex-shrink-0">
+                      {profile?.avatar_url ? (
+                        <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gold to-gold-light text-navy font-condensed font-black">
+                          {profileInitials(profile, user?.email)}
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] uppercase tracking-[2px] text-gold font-bold">Mon espace</p>
+                      <p className="text-white font-semibold truncate">{profile?.full_name || 'Client HM'}</p>
+                      <p className="text-text-muted text-xs truncate">{user.email}</p>
+                    </div>
+                  </div>
                   <button
                     onClick={() => { navigate('/dashboard'); setMobileOpen(false) }}
-                    className="flex items-center gap-2 font-semibold py-3 cursor-pointer bg-transparent border-none text-left"
-                    style={{ color: '#C9A84C' }}
+                    className="w-full flex items-center justify-center gap-2 font-semibold py-3 rounded-lg cursor-pointer border-none mb-2 btn-gold text-[13px]"
                   >
-                    <FiUser /> Mon Espace
+                    <FiUser /> Ouvrir Mon espace
                   </button>
                   {isAdmin && (
                     <button
                       onClick={() => { navigate('/admin'); setMobileOpen(false) }}
-                      className="flex items-center gap-2 font-semibold py-3 cursor-pointer bg-transparent border-none text-left"
-                      style={{ color: '#C9A84C' }}
+                      className="w-full flex items-center gap-2 font-semibold py-2.5 cursor-pointer bg-transparent border-none text-left text-gold mb-1"
                     >
-                      <FiGrid /> Admin
+                      <FiGrid /> Tableau admin
                     </button>
                   )}
                   <button
-                    onClick={handleLogout}
-                    className="flex items-center gap-2 font-semibold py-3 cursor-pointer bg-transparent border-none text-left text-red-400"
+                    onClick={() => { handleLogout(); setMobileOpen(false) }}
+                    className="w-full flex items-center gap-2 font-semibold py-2.5 cursor-pointer bg-transparent border-none text-left text-red-400"
                   >
                     <FiLogOut /> Déconnexion
                   </button>
-                </>
+                </div>
               ) : (
                 <button
                   onClick={() => { openAuth('login'); setMobileOpen(false) }}
