@@ -47,9 +47,12 @@ export default function FleetManagement() {
   }, [addToast, setCtxCars])
 
   React.useEffect(() => {
-    if (ctxCars.length) setCars(ctxCars)
-    else load()
-  }, [ctxCars, load])
+    setCars(ctxCars)
+  }, [ctxCars])
+
+  React.useEffect(() => {
+    if (!ctxCars.length) load()
+  }, [ctxCars.length, load])
 
   const brands = useMemo(() => [...new Set(cars.map((c) => c.brand).filter(Boolean))], [cars])
 
@@ -187,7 +190,7 @@ export default function FleetManagement() {
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {paged.map((car) => (
-            <GlassCard key={car.id} hover className="overflow-hidden">
+            <GlassCard key={car.id ?? `fleet-${car.name}`} hover className="overflow-hidden">
               <div className="h-44 bg-black/20 flex items-center justify-center p-2">
                 <LazyImage src={car.img} alt={car.name} className="h-full w-full" />
               </div>
@@ -221,12 +224,12 @@ export default function FleetManagement() {
                 </div>
                 <div className="grid grid-cols-4 gap-1">
                   {[
-                    { icon: Eye, fn: () => setPreview(car) },
-                    { icon: Edit2, fn: () => setModal({ open: true, car }) },
-                    { icon: Trash2, fn: () => handleDelete(car) },
-                  ].map(({ icon: Icon, fn }) => (
+                    { key: 'preview', icon: Eye, fn: () => setPreview(car) },
+                    { key: 'edit', icon: Edit2, fn: () => setModal({ open: true, car }) },
+                    { key: 'delete', icon: Trash2, fn: () => handleDelete(car) },
+                  ].map(({ key, icon: Icon, fn }) => (
                     <button
-                      key={Icon.name}
+                      key={key}
                       type="button"
                       onClick={fn}
                       className="flex items-center justify-center py-2 rounded-lg bg-white/5 hover:bg-[#C9A84C]/15 text-white/70 hover:text-[#C9A84C] border border-white/10"

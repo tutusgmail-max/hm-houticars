@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react'
-import { motion } from 'framer-motion'
-import CarCard from '../components/CarCard'
-import { CAR_CATEGORIES } from '../data'
-import { useCars } from '../context/CarsContext'
+import { motion, AnimatePresence } from 'framer-motion'
+import FleetSlider from '../components/FleetSlider'
 import { CarCardSkeleton } from '../components/ui/Skeleton'
+import { useCars } from '../context/CarsContext'
+import { CAR_CATEGORIES } from '../data'
 
 export default function CarsSection() {
   const { cars, loading } = useCars()
@@ -14,27 +14,69 @@ export default function CarsSection() {
     [cars, filter],
   )
 
-  return (
-    <section id="cars" className="luxury-section-line py-28 px-4 sm:px-10 relative overflow-hidden" style={{ background: '#0D1A2A' }}>
-      <div className="absolute top-14 right-[-20px] font-condensed text-[clamp(5rem,15vw,12rem)] font-black leading-none tracking-[-5px] text-gold/[0.03] pointer-events-none select-none">FLEET</div>
-      <div className="max-w-[1360px] mx-auto">
-        <div className="mb-14 relative z-10 flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="mb-5 flex items-center gap-3 font-condensed text-[11px] font-bold uppercase tracking-[3px] text-gold before:block before:h-px before:w-6 before:bg-gold">
-              Notre Flotte 2026
-            </div>
-            <h2 className="font-display font-bold leading-[0.95] text-white" style={{ fontSize: 'clamp(2.8rem, 5vw, 5rem)' }}>
-              Choisissez<br />Votre <em className="text-gold">Véhicule</em>
-            </h2>
-          </div>
-          <p className="max-w-[360px] text-sm font-light leading-[1.8] text-white/40">
-            Des voitures récentes, impeccablement entretenues et assurées. Disponibles immédiatement dans toute la région orientale.
-          </p>
-        </div>
+  // Available category tabs (only show categories that have cars)
+  const activeCats = useMemo(() => {
+    const present = new Set(cars.map((c) => c.cat))
+    return CAR_CATEGORIES.filter((cat) => cat === 'Tous' || present.has(cat))
+  }, [cars])
 
-        <div className="flex gap-2 mb-10 flex-wrap relative z-10">
-          <span className="mr-2 self-center text-[11px] font-bold uppercase tracking-[2px] text-white/20">Filtrer:</span>
-          {CAR_CATEGORIES.map((cat) => (
+  return (
+    <section
+      id="cars"
+      className="luxury-section-line py-28 px-4 sm:px-10 relative overflow-hidden"
+      style={{ background: '#0D1A2A' }}
+    >
+      {/* Decorative watermark */}
+      <div
+        className="absolute top-10 right-[-20px] font-condensed font-black leading-none pointer-events-none select-none"
+        style={{
+          fontSize: 'clamp(5rem,15vw,13rem)',
+          letterSpacing: '-5px',
+          color: 'rgba(201,168,76,0.025)',
+        }}
+      >
+        FLEET
+      </div>
+
+      <div className="max-w-[1100px] mx-auto">
+        {/* ── Section Header ─────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5 }}
+          className="mb-14 relative z-10"
+        >
+          <div className="mb-5 flex items-center gap-3 font-condensed text-[11px] font-bold uppercase tracking-[3px] text-gold">
+            <span className="block h-px w-6 bg-gold" />
+            Notre Flotte 2026
+          </div>
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <h2
+              className="font-display font-bold leading-[0.95] text-white"
+              style={{ fontSize: 'clamp(2.8rem, 5vw, 5rem)' }}
+            >
+              Choisissez<br />
+              Votre <em className="text-gold">Véhicule</em>
+            </h2>
+            <p className="max-w-[360px] text-sm font-light leading-[1.8]" style={{ color: 'rgba(255,255,255,0.4)' }}>
+              Des voitures récentes, impeccablement entretenues et assurées. Disponibles immédiatement dans toute la région orientale.
+            </p>
+          </div>
+        </motion.div>
+
+        {/* ── Category Filter Tabs ───────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.4, delay: 0.1 }}
+          className="relative z-10 flex gap-2 mb-10 flex-wrap"
+        >
+          <span className="mr-2 self-center text-[11px] font-bold uppercase tracking-[2px]" style={{ color: 'rgba(255,255,255,0.2)' }}>
+            Filtrer:
+          </span>
+          {activeCats.map((cat) => (
             <button
               key={cat}
               onClick={() => setFilter(cat)}
@@ -48,34 +90,52 @@ export default function CarsSection() {
               {cat}
             </button>
           ))}
-        </div>
-
-        <motion.div
-          layout
-          className="relative z-10 flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth pb-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
-          {loading
-            ? [1, 2, 3, 4, 5, 6].map((i) => <CarCardSkeleton key={i} />)
-            : filtered.map((car, i) => (
-                <motion.div
-                  key={car.id}
-                  layout
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.35, delay: i * 0.06 }}
-                  className="min-w-[86%] snap-start sm:min-w-[420px] lg:min-w-[440px] xl:min-w-[450px]"
-                >
-                  <CarCard car={car} delay={i} />
-                </motion.div>
-              ))}
         </motion.div>
 
+        {/* ── Fleet Slider ──────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5, delay: 0.15 }}
+          className="relative z-10"
+        >
+          {loading ? (
+            /* Skeleton while loading */
+            <div className="grid grid-cols-1 gap-6">
+              <CarCardSkeleton />
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="py-20 text-center text-[14px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
+              Aucun véhicule dans cette catégorie.
+            </div>
+          ) : (
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={filter}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.25 }}
+              >
+                <FleetSlider cars={filtered} />
+              </motion.div>
+            </AnimatePresence>
+          )}
+        </motion.div>
+
+        {/* ── Bottom Tip ───────────────────────────────── */}
         {!loading && filtered.length > 1 && (
-          <div className="relative z-10 mt-2 flex justify-center gap-2">
-            {filtered.map((car) => (
-              <span key={car.id} className="h-1 w-8 rounded-full bg-gold/25" />
-            ))}
-          </div>
+          <motion.p
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.4 }}
+            className="mt-8 text-center text-[11px] font-medium tracking-[1.5px] uppercase"
+            style={{ color: 'rgba(255,255,255,0.18)' }}
+          >
+            ← Balayez ou utilisez les flèches pour naviguer →
+          </motion.p>
         )}
       </div>
     </section>

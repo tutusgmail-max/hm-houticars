@@ -38,6 +38,7 @@ export interface ConfirmationData extends ReservationData {
 export interface BookingConfirmation {
   success: boolean
   bookingId?: string
+  reservationId?: string
   error?: string
   bookingDetails?: any
 }
@@ -171,8 +172,6 @@ export async function completeBooking(data: ConfirmationData): Promise<{
   error?: string
 }> {
   try {
-    // Step 1: Validate
-    console.log('Step 1: Validating reservation...')
     const validation = await validateReservation({
       car_id: data.car_id,
       user_id: data.user_id,
@@ -190,8 +189,6 @@ export async function completeBooking(data: ConfirmationData): Promise<{
       }
     }
 
-    // Step 2: Confirm
-    console.log('Step 2: Confirming reservation...')
     const confirmation = await confirmReservation(data)
 
     if (!confirmation.success) {
@@ -202,17 +199,16 @@ export async function completeBooking(data: ConfirmationData): Promise<{
       }
     }
 
-    // Step 3: Generate Contract
-    console.log('Step 3: Generating contract...')
+    const reservationId = confirmation.reservationId || confirmation.bookingId
     const contract = await generateContract({
-      bookingId: confirmation.bookingId,
+      bookingId: reservationId,
       format: 'html',
       includeInsurance: data.insurance_selected,
     })
 
     return {
       success: true,
-      bookingId: confirmation.bookingId,
+      bookingId: reservationId,
       contractUrl: contract.contractUrl,
       message: 'Booking completed successfully!',
     }
@@ -231,7 +227,7 @@ export async function completeBooking(data: ConfirmationData): Promise<{
 export async function getBooking(bookingId: string) {
   try {
     const { data, error } = await supabase
-      .from('bookings')
+      .from('reservations')
       .select(
         `
       *,
@@ -256,7 +252,7 @@ export async function getBooking(bookingId: string) {
 export async function getUserBookings(userId: string) {
   try {
     const { data, error } = await supabase
-      .from('bookings')
+      .from('reservations')
       .select(
         `
       *,
@@ -280,11 +276,11 @@ export async function getUserBookings(userId: string) {
 export async function cancelBooking(bookingId: string, reason?: string) {
   try {
     const { error } = await supabase
-      .from('bookings')
+      .from('reservations')
       .update({
         status: 'cancelled',
-        cancellation_reason: reason || null,
-        cancelled_at: new Date().toISOString(),
+        notes: reason ? `Annulation: ${reason}` : null,
+        updated_at: new Date().toISOString(),
       })
       .eq('id', bookingId)
 

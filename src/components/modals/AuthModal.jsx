@@ -48,7 +48,7 @@ function emptyForm() {
 }
 
 export default function AuthModal() {
-  const { authModal, closeAuth, addToast } = useApp()
+  const { authModal, authNotice, closeAuth, addToast } = useApp()
 
   // FIX 1: sync mode from prop every time modal opens
   const [mode, setMode] = useState(authModal || MODES.login)
@@ -149,6 +149,11 @@ export default function AuthModal() {
             </div>
             <div className="mt-5">
               <h2 className="font-condensed font-black text-white text-[1.8rem]">{TITLES[mode]}</h2>
+              {authNotice && (
+                <p className="mt-3 rounded-xl border border-gold/25 bg-gold/[0.08] px-4 py-3 text-sm font-semibold leading-relaxed text-gold">
+                  {authNotice}
+                </p>
+              )}
               {SUBTITLES[mode] && <p className="text-text-muted text-sm mt-1">{SUBTITLES[mode]}</p>}
             </div>
           </div>

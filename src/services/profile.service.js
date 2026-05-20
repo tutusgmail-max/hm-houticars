@@ -4,14 +4,49 @@
  */
 import { supabase } from '../lib/supabase'
 
-export async function fetchProfile(userId) {
+/**
+ * Fetch the profile row for the current user.
+ *
+ * If the profile row is missing (common when DB triggers/migrations weren't applied yet),
+ * we attempt to create it (insert) using the authenticated user's metadata.
+ * This prevents downstream issues like:
+ * - admin role always false because profile is null
+ * - protected routes behaving inconsistently
+ */
+export async function fetchProfile(userId, sessionUser = null) {
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
     .eq('id', userId)
     .single()
-  if (error) throw error
-  return data
+
+  if (!error) return data
+
+  // PGRST116 = "No rows found" in PostgREST
+  if ((error.code === 'PGRST116' || /0 rows|no rows/i.test(error.message || '')) && sessionUser) {
+    try {
+      const payload = {
+        id: userId,
+        email: sessionUser.email ?? null,
+        full_name: sessionUser.user_metadata?.full_name ?? sessionUser.user_metadata?.name ?? null,
+        phone: sessionUser.user_metadata?.phone ?? null,
+        // Do NOT auto-escalate. Default to client.
+        role: 'client',
+      }
+
+      // Use INSERT (not UPSERT) to avoid accidentally overriding an existing role.
+      const { data: created, error: createErr } = await supabase
+        .from('profiles')
+        .insert(payload)
+        .select('*')
+        .single()
+
+      if (!createErr) return created
+      // If insert failed for any reason, fall through to original error.
+    } catch (_) {}
+  }
+
+  throw error
 }
 
 export async function updateProfileData(userId, updates) {

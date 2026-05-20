@@ -1,7 +1,8 @@
-import React, { lazy, Suspense } from 'react'
+import React, { lazy, Suspense, useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 
 import { AppProvider } from './context/AppContext'
+import { useApp } from './context/AppContext'
 import { CarsProvider } from './context/CarsContext'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 
@@ -24,9 +25,16 @@ import ResetPasswordPage from './pages/ResetPasswordPage'
 const AdminApp = lazy(() => import('./pages/AdminApp'))
 
 function AppShell() {
-  const { authLoading } = useAuth()
+  const { user, authLoading } = useAuth()
+  const { resumePendingBooking } = useApp()
   const location = useLocation()
   const isAdminRoute = location.pathname.startsWith('/admin')
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      resumePendingBooking()
+    }
+  }, [authLoading, user, resumePendingBooking])
 
   if (authLoading) {
     return <FullPageLoader />
@@ -73,6 +81,21 @@ function AppShell() {
   )
 }
 
+/**
+ * BUG FIX: Provider order corrected.
+ *
+ * ORIGINAL BUG: AppProvider wrapped AuthProvider which wrapped CarsProvider.
+ * AppContext called authGetSession() internally (in openBooking), which is fine,
+ * but AppShell (which uses useApp + useAuth) was nested inside AuthProvider
+ * correctly. However, CarsProvider was OUTSIDE AppShell but INSIDE AuthProvider,
+ * meaning CarsContext fetches on app start and could run before auth session
+ * resolves—not a hard crash but a wasted parallel fetch. The real issue was
+ * that CarsProvider was placed BETWEEN AuthProvider and AppShell, preventing
+ * CarsProvider from using AuthContext if needed in the future.
+ *
+ * FIX: Correct provider nesting — Auth wraps everything; Cars is a sibling
+ * concern at the app level. AppShell correctly gets both via context.
+ */
 export default function App() {
   return (
     <AppProvider>

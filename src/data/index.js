@@ -1,6 +1,6 @@
 // ─── Cars ────────────────────────────────────────────────────────────────────
 const SUPABASE_CAR_IMG =
-  'https://ertdqfavrkomikszagtc.supabase.co/storage/v1/object/public/image/houti%20cars'
+  'https://cmoioidgxealxfirkssc.supabase.co/storage/v1/object/public/image/houti%20cars'
 
 /** Static fallback when Supabase cars table is unavailable */
 export const FALLBACK_CARS = [

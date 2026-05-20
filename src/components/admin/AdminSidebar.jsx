@@ -14,13 +14,14 @@ import {
 const NAV = [
   { to: '/admin', end: true, label: 'Tableau de bord', icon: LayoutDashboard },
   { to: '/admin/fleet', label: 'Flotte', icon: Car },
-  { to: '/admin/reservations', label: 'Réservations', icon: CalendarDays },
+  { to: '/admin/calendar', label: 'Calendrier', icon: CalendarDays },
+  { to: '/admin/reservations', label: 'Réservations', icon: FileText },
   { to: '/admin/documents', label: 'Documents', icon: FileText },
   { to: '/admin/customers', label: 'Clients', icon: Users },
   { to: '/admin/settings', label: 'Paramètres', icon: Settings },
 ]
 
-export default function AdminSidebar({ collapsed, onToggle }) {
+export default function AdminSidebar({ collapsed = false, onToggle, onNavigate }) {
   return (
     <aside
       className={`fixed left-0 top-0 z-[300] h-full flex flex-col border-r border-white/10 bg-[#070d14]/95 backdrop-blur-xl transition-all duration-300 ${
@@ -47,6 +48,7 @@ export default function AdminSidebar({ collapsed, onToggle }) {
             key={to}
             to={to}
             end={end}
+            onClick={onNavigate}
             className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
                 isActive

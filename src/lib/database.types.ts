@@ -35,7 +35,17 @@ export interface IdentityDocumentsPayload {
   updated_at?: string
 }
 
-export type UserDocumentType = 'cin_recto' | 'permis'
+// Keep legacy names (recto/verso) for older rows, but support the v3/v4 names
+// used throughout the current frontend/services.
+export type UserDocumentType =
+  | 'cin_front'
+  | 'cin_back'
+  | 'permis_front'
+  | 'permis_back'
+  | 'cin_recto'
+  | 'cin_verso'
+  | 'permis_recto'
+  | 'permis_verso'
 
 /** One row per document in public.user_documents */
 export interface UserDocument {

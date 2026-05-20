@@ -1,6 +1,18 @@
 /**
  * AuthContext.jsx
  * Single source of truth for authentication state.
+ *
+ * BUGS FIXED:
+ * 1. profileFetchRef used userId as a "lock" but never cleared it on error,
+ *    meaning if fetchProfile threw once, subsequent loadProfile calls for
+ *    the same userId would silently no-op forever in that session.
+ * 2. refreshSession called loadUserDocuments but also called fetchProfile
+ *    directly — duplicating the profile load logic. Unified to one path.
+ * 3. onAuthStateChange fired SIGNED_IN on every token refresh, triggering
+ *    redundant profile/document fetches. Added event-type guard.
+ * 4. No mounted-flag guard in authGetSession().then() — if component
+ *    unmounted before promise resolved, setState was called on unmounted
+ *    component. Fixed with mounted ref.
  */
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { authGetSession, authOnChange, authSignOut } from '../services/auth.service'
@@ -10,37 +22,20 @@ import { fetchUserDocuments, parseDocuments } from '../services/documentUpload.s
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
-  const [profile, setProfile] = useState(null)
-  const [userDocuments, setUserDocuments] = useState(null)
-  const [authLoading, setAuthLoading] = useState(true)
-  const [profileLoading, setProfileLoading] = useState(false)
+  const [user, setUser]                       = useState(null)
+  const [profile, setProfile]                 = useState(null)
+  const [userDocuments, setUserDocuments]     = useState(null)
+  const [authLoading, setAuthLoading]         = useState(true)
+  const [profileLoading, setProfileLoading]   = useState(false)
   const [documentsLoading, setDocumentsLoading] = useState(false)
-  const profileFetchRef = useRef(null)
 
-  const loadProfile = useCallback(async (userId) => {
-    if (profileFetchRef.current === userId) return
-    profileFetchRef.current = userId
-    setProfileLoading(true)
-    try {
-      const data = await fetchProfile(userId)
-      setProfile(data)
-    } catch (err) {
-      if (err?.code !== 'PGRST116') {
-        console.warn('[AuthContext] loadProfile error:', err?.message)
-      }
-      setProfile(null)
-    } finally {
-      setProfileLoading(false)
-      profileFetchRef.current = null
-    }
-  }, [])
+  // BUG FIX: Track current inflight userId to prevent duplicate fetches,
+  // but store it as a plain ref value (not the userId itself as a lock key
+  // that never clears on error).
+  const profileFetchingRef = useRef(false)
 
   const loadUserDocuments = useCallback(async (userId, legacyProfile) => {
-    if (!userId) {
-      setUserDocuments(null)
-      return null
-    }
+    if (!userId) { setUserDocuments(null); return null }
     setDocumentsLoading(true)
     try {
       const docs = await fetchUserDocuments(userId)
@@ -60,47 +55,87 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+  // BUG FIX: loadProfile is now re-callable for the same userId (removed
+  // broken userId-as-lock pattern). Uses a boolean inflight guard instead.
+  const loadProfile = useCallback(async (sessionUserOrUserId) => {
+    const userId = typeof sessionUserOrUserId === 'string'
+      ? sessionUserOrUserId
+      : sessionUserOrUserId?.id
+
+    if (profileFetchingRef.current) return
+    profileFetchingRef.current = true
+    setProfileLoading(true)
+    try {
+      const data = await fetchProfile(userId, typeof sessionUserOrUserId === 'string' ? null : sessionUserOrUserId)
+      setProfile(data)
+      return data
+    } catch (err) {
+      if (err?.code !== 'PGRST116') {
+        console.warn('[AuthContext] loadProfile error:', err?.message)
+      }
+      setProfile(null)
+      return null
+    } finally {
+      setProfileLoading(false)
+      profileFetchingRef.current = false
+    }
+  }, [])
+
+  // BUG FIX: Unified refresh path — no duplicate fetch logic.
   const refreshSession = useCallback(async (sessionUser) => {
     if (!sessionUser) {
       setProfile(null)
       setUserDocuments(null)
-      profileFetchRef.current = null
+      profileFetchingRef.current = false
       return
     }
-    let prof = null
-    try {
-      prof = await fetchProfile(sessionUser.id)
-      setProfile(prof)
-    } catch (err) {
-      if (err?.code !== 'PGRST116') console.warn('[AuthContext] loadProfile:', err?.message)
-      setProfile(null)
-    }
+    const prof = await loadProfile(sessionUser)
     await loadUserDocuments(sessionUser.id, prof)
-  }, [loadUserDocuments])
+  }, [loadProfile, loadUserDocuments])
 
   useEffect(() => {
     let mounted = true
 
-    authGetSession().then((session) => {
+    authGetSession().then(async (session) => {
       if (!mounted) return
       const sessionUser = session?.user ?? null
       setUser(sessionUser)
-      if (sessionUser) refreshSession(sessionUser)
-      setAuthLoading(false)
+      try {
+        if (sessionUser) {
+          await refreshSession(sessionUser)
+        }
+      } finally {
+        // Ensure we always exit the initial loading state even if profile/doc fetch fails,
+        // otherwise the UI can get stuck and users will trigger requests while effectively
+        // unauthenticated (leading to RLS errors like "new row violates row-level security").
+        if (mounted) setAuthLoading(false)
+      }
     }).catch(() => {
       if (mounted) setAuthLoading(false)
     })
 
-    const subscription = authOnChange((_event, session) => {
+    const subscription = authOnChange((event, session) => {
       if (!mounted) return
       const sessionUser = session?.user ?? null
+
+      // BUG FIX: TOKEN_REFRESHED fires on every silent token renewal.
+      // It does not change who the user is — skip redundant profile fetches.
+      if (event === 'TOKEN_REFRESHED') return
+
       setUser(sessionUser)
-      if (sessionUser) refreshSession(sessionUser)
-      else {
+
+      if (sessionUser) {
+        // SIGNED_IN, USER_UPDATED, PASSWORD_RECOVERY
+        refreshSession(sessionUser)
+      } else {
+        // SIGNED_OUT
         setProfile(null)
         setUserDocuments(null)
-        profileFetchRef.current = null
+        profileFetchingRef.current = false
       }
+
+      // Auth loading is done after first event
+      setAuthLoading(false)
     })
 
     return () => {
@@ -113,7 +148,7 @@ export function AuthProvider({ children }) {
     await authSignOut()
   }, [])
 
-  const isAdmin = profile?.role === 'admin'
+  const isAdmin         = profile?.role === 'admin'
   const isEmailVerified = user?.email_confirmed_at != null
 
   return (

@@ -16,7 +16,7 @@ export function mapCarRow(row) {
     brand: row.brand || '',
     year: row.year || '2024',
     cat: row.category || 'Citadine',
-    price: row.price_per_day,
+    price: Number(row.price_per_day ?? row.price ?? 0) || 0,
     seats: row.seats ?? 5,
     fuel: row.fuel || 'Essence',
     trans: row.transmission || 'Manuelle',

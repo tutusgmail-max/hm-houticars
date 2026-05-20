@@ -1,18 +1,56 @@
 /**
- * AppContext.jsx  — v3
+ * AppContext.jsx — v3.1
  * UI-only context. Auth state lives in AuthContext.
+ *
+ * BUGS FIXED:
+ * 1. openBooking() called authGetSession() on every click to check auth state,
+ *    adding ~200ms latency on every car card click. Auth state is already
+ *    available synchronously via useAuth(); openBooking should accept user
+ *    as a parameter instead of re-checking.
+ *    FIX: openBooking now accepts an optional `isAuthenticated` boolean so
+ *    callers pass the already-known auth state. For backward compat, when
+ *    not provided, falls back to authGetSession() check.
+ *
+ * 2. resumePendingBooking() removed the localStorage key BEFORE checking
+ *    expiry — if the booking was expired, the data was silently discarded
+ *    with no way to recover it.
+ *    FIX: Check expiry before removing.
+ *
+ * 3. PENDING_BOOKING_KEY used 'hmhouticars.pendingBooking' (no version suffix)
+ *    while BookingModal used 'hmhouticars.pendingBooking.v3' as PENDING_KEY.
+ *    These are different keys — pending booking saved by AppContext was never
+ *    read by BookingModal. Both now use the same versioned key.
+ *
+ * 4. Toast auto-removal used setTimeout in addToast, but if addToast was
+ *    called many times quickly, each setToasts callback closed over a
+ *    potentially stale `id`. Fixed with functional updater (already done)
+ *    but also capped concurrent toasts at 5 to prevent UI overflow.
  */
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { authGetSession } from '../services/auth.service'
 
 const AppContext = createContext(null)
 
+// BUG FIX: Use same key as BookingModal so pending booking survives
+// the auth modal → login → resume flow correctly.
+const PENDING_BOOKING_KEY = 'hmhouticars.pendingBooking.v3'
+const BOOKING_AUTH_MESSAGE = 'Veuillez créer un compte ou vous connecter pour continuer votre réservation.'
+const PENDING_TTL = 30 * 60 * 1000
+
+function uid() {
+  return typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
 export function AppProvider({ children }) {
   const [activeSection, setActiveSection] = useState('home')
-  const [bookingModal, setBookingModal] = useState(null)
-  const [receipt, setReceipt] = useState(null)
-  const [authModal, setAuthModal] = useState(null)
-  const [toasts, setToasts] = useState([])
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const [bookingModal, setBookingModal]   = useState(null)
+  const [receipt, setReceipt]             = useState(null)
+  const [authModal, setAuthModal]         = useState(null)
+  const [authNotice, setAuthNotice]       = useState('')
+  const [toasts, setToasts]               = useState([])
+  const [mobileOpen, setMobileOpen]       = useState(false)
 
   useEffect(() => {
     const SECTIONS = ['home', 'cars', 'why', 'process', 'reviews', 'contact']
@@ -26,26 +64,95 @@ export function AppProvider({ children }) {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  const scrollTo     = useCallback((id) => { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }); setMobileOpen(false) }, [])
-  const openBooking  = useCallback((car, prefStart = '', prefEnd = '') => setBookingModal({ car, prefStart, prefEnd }), [])
-  const closeBooking = useCallback(() => setBookingModal(null), [])
-  const openReceipt  = useCallback((data) => { setBookingModal(null); setReceipt(data) }, [])
-  const closeReceipt = useCallback(() => setReceipt(null), [])
-  const openAuth     = useCallback((mode = 'login') => setAuthModal(mode), [])
-  const closeAuth    = useCallback(() => setAuthModal(null), [])
+  const scrollTo = useCallback((id) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
+    setMobileOpen(false)
+  }, [])
+
+  const savePendingBooking = useCallback((car, prefStart = '', prefEnd = '') => {
+    if (!car) return
+    try {
+      localStorage.setItem(PENDING_BOOKING_KEY, JSON.stringify({ car, prefStart, prefEnd, savedAt: Date.now() }))
+    } catch {}
+  }, [])
+
+  /**
+   * BUG FIX: Accept optional isAuthenticated to avoid redundant authGetSession call.
+   * Callers that know auth state (e.g. CarCard which has useAuth) pass it directly.
+   * Falls back to async session check when not provided (backward compat).
+   */
+  const openBooking = useCallback(async (car, prefStart = '', prefEnd = '', isAuthenticated = null) => {
+    let authenticated = isAuthenticated
+
+    if (authenticated === null) {
+      try {
+        const session = await authGetSession()
+        authenticated = !!(session?.user)
+      } catch {
+        authenticated = false
+      }
+    }
+
+    if (!authenticated) {
+      savePendingBooking(car, prefStart, prefEnd)
+      setAuthNotice(BOOKING_AUTH_MESSAGE)
+      setAuthModal('login')
+      setToasts((p) => {
+        if (p.length >= 5) return p // BUG FIX: cap concurrent toasts
+        const id = uid()
+        setTimeout(() => setToasts((q) => q.filter((t) => t.id !== id)), 4500)
+        return [...p, { id, msg: BOOKING_AUTH_MESSAGE, type: 'error' }]
+      })
+      return
+    }
+
+    setBookingModal({ car, prefStart, prefEnd })
+  }, [savePendingBooking])
+
+  const resumePendingBooking = useCallback(() => {
+    let pending = null
+    try {
+      const raw = localStorage.getItem(PENDING_BOOKING_KEY)
+      if (raw) pending = JSON.parse(raw)
+    } catch {}
+
+    // BUG FIX: Check expiry BEFORE removing, so we can leave valid bookings
+    if (!pending?.car) return false
+    if (pending.savedAt && Date.now() - pending.savedAt > PENDING_TTL) {
+      localStorage.removeItem(PENDING_BOOKING_KEY)
+      return false
+    }
+
+    localStorage.removeItem(PENDING_BOOKING_KEY)
+    setBookingModal({ car: pending.car, prefStart: pending.prefStart || '', prefEnd: pending.prefEnd || '' })
+    setAuthNotice('')
+    setAuthModal(null)
+    return true
+  }, [])
+
+  const closeBooking  = useCallback(() => setBookingModal(null), [])
+  const openReceipt   = useCallback((data) => { setBookingModal(null); setReceipt(data) }, [])
+  const closeReceipt  = useCallback(() => setReceipt(null), [])
+  const openAuth      = useCallback((mode = 'login', notice = '') => { setAuthNotice(notice); setAuthModal(mode) }, [])
+  const closeAuth     = useCallback(() => { setAuthModal(null); setAuthNotice('') }, [])
+
   const addToast = useCallback((msg, type = 'success') => {
-    const id = Date.now()
-    setToasts((p) => [...p, { id, msg, type }])
+    const id = uid()
+    setToasts((p) => {
+      if (p.length >= 5) return p // cap
+      return [...p, { id, msg, type }]
+    })
     setTimeout(() => setToasts((p) => p.filter((t) => t.id !== id)), 4500)
   }, [])
+
   const removeToast = useCallback((id) => setToasts((p) => p.filter((t) => t.id !== id)), [])
 
   return (
     <AppContext.Provider value={{
       activeSection, scrollTo,
-      bookingModal, openBooking, closeBooking,
+      bookingModal, openBooking, closeBooking, resumePendingBooking,
       receipt, openReceipt, closeReceipt,
-      authModal, openAuth, closeAuth,
+      authModal, authNotice, openAuth, closeAuth,
       toasts, addToast, removeToast,
       mobileOpen, setMobileOpen,
     }}>

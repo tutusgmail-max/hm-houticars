@@ -5,13 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:5173": "vite --host=0.0.0.0 --port=5173 --strictPort",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.0",
     "framer-motion": "^12.38.0",
-    "jspdf": "^2.5.2",
+    "jspdf": "^4.2.1",
     "lucide-react": "^1.16.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
@@ -23,6 +24,7 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^6.0.2",
     "autoprefixer": "^10.4.19",
+    "esbuild": "^0.28.0",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.4",
     "vite": "^8.0.13"

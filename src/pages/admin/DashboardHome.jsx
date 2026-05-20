@@ -16,23 +16,25 @@ import StatCard from '../../components/admin/ui/StatCard'
 import GlassCard from '../../components/admin/ui/GlassCard'
 import SimpleBarChart from '../../components/admin/ui/SimpleBarChart'
 import StatusBadge from '../../components/admin/ui/StatusBadge'
+import {
+  formatMoneyDh,
+  reservationCustomerName,
+  reservationDateRange,
+} from '../../utils/reservationFormat'
 
 export default function DashboardHome() {
-  const { stats, chartData, activity, reservations, loading } = useAdminData()
+  const { stats, chartData, activity, reservations, loading, refreshing } = useAdminData()
   const recent = reservations.slice(0, 6)
 
-  if (loading) {
-    return (
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-          <div key={i} className="h-28 rounded-2xl bg-white/5 animate-pulse" />
-        ))}
-      </div>
-    )
+  if (loading && reservations.length === 0) {
+    return null
   }
 
   return (
     <div className="space-y-8">
+      {refreshing && (
+        <p className="text-xs text-white/40 text-right">Actualisation…</p>
+      )}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard icon={Car} label="Total véhicules" value={stats.totalCars} delay={0} />
         <StatCard icon={Car} label="Disponibles" value={stats.availableCars} accent="emerald" delay={50} />
@@ -89,6 +91,9 @@ export default function DashboardHome() {
           <GlassCard className="p-6">
             <h3 className="text-sm font-bold uppercase tracking-widest text-white/45 mb-4">Activité récente</h3>
             <ul className="space-y-3 max-h-64 overflow-y-auto">
+              {activity.length === 0 && (
+                <li className="text-sm text-white/35 py-4 text-center">Aucune activité pour le moment</li>
+              )}
               {activity.map((a) => (
                 <li key={a.id} className="flex gap-3 text-sm border-b border-white/5 pb-3 last:border-0">
                   <span className="w-2 h-2 rounded-full bg-[#C9A84C] mt-1.5 shrink-0" />
@@ -126,18 +131,25 @@ export default function DashboardHome() {
               </tr>
             </thead>
             <tbody>
+              {recent.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-white/35 text-sm">
+                    Aucune réservation pour le moment
+                  </td>
+                </tr>
+              )}
               {recent.map((r) => (
                 <tr key={r.id} className="border-b border-white/5 hover:bg-white/[0.02]">
-                  <td className="py-3 pr-4 font-mono text-[#C9A84C]">{r.ref}</td>
-                  <td className="py-3 pr-4">{r.customer_name || r.profiles?.full_name || '—'}</td>
-                  <td className="py-3 pr-4">{r.car_name}</td>
+                  <td className="py-3 pr-4 font-mono text-[#C9A84C]">{r.ref || '—'}</td>
+                  <td className="py-3 pr-4">{reservationCustomerName(r)}</td>
+                  <td className="py-3 pr-4">{r.car_name || '—'}</td>
                   <td className="py-3 pr-4 text-white/50 text-xs">
-                    {r.start_date} → {r.end_date}
+                    {reservationDateRange(r)}
                   </td>
                   <td className="py-3 pr-4">
                     <StatusBadge status={r.status} />
                   </td>
-                  <td className="py-3 text-right font-bold text-[#C9A84C]">{r.total} DH</td>
+                  <td className="py-3 text-right font-bold text-[#C9A84C]">{formatMoneyDh(r.total)}</td>
                 </tr>
               ))}
             </tbody>

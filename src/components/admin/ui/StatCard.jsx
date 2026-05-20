@@ -23,7 +23,7 @@ export default function StatCard({ icon: Icon, label, value, sub, accent = 'gold
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: delay / 1000 + 0.1 }}
           >
-            {value}
+            {value ?? '—'}
           </motion.p>
           {sub && <p className="text-xs text-white/40 mt-2">{sub}</p>}
         </div>

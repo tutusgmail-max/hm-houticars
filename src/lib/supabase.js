@@ -1,45 +1,100 @@
+/**
+ * supabase.js — v4 PRODUCTION
+ *
+ * FIXES vs v3 :
+ * 1. Client Supabase avec options de persistance session
+ * 2. createReservation : overlap check + retry sans colonnes v3 si PGRST204
+ * 3. uploadDocument : path correct (folder/userId/docType.ext)
+ * 4. getAllReservations : join profiles pour customer info
+ * 5. mapReservationToRow / mapRowToReservation : robustes null-safe
+ */
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+// Vite only exposes env vars prefixed with VITE_
+const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim().replace(/\/+$/, '')
+const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim()
 
-console.log('SUPABASE URL:', supabaseUrl)
+function decodeJwtPayload(token) {
+  try {
+    const parts = token.split('.')
+    if (parts.length < 2) return null
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const json = decodeURIComponent(
+      atob(b64)
+        .split('')
+        .map((c) => `%${c.charCodeAt(0).toString(16).padStart(2, '0')}`)
+        .join(''),
+    )
+    return JSON.parse(json)
+  } catch {
+    return null
+  }
+}
+
+function getSupabaseProjectRefFromUrl(url) {
+  try {
+    const u = new URL(url)
+    // <ref>.supabase.co
+    const host = u.hostname || ''
+    return host.endsWith('.supabase.co') ? host.replace(/\.supabase\.co$/i, '') : null
+  } catch {
+    return null
+  }
+}
 
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error(
-    'Missing Supabase environment variables. Copy `.env.example` to `.env` and set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.'
+    'Variables Supabase manquantes. Copiez .env.example en .env et renseignez VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY.',
   )
 }
 
-export const supabase = createClient(
-  supabaseUrl,
-  supabaseAnonKey
-)
+// Extra safety: catch common misconfiguration early (prevents opaque "NetworkError" later).
+const urlRef = getSupabaseProjectRefFromUrl(supabaseUrl)
+const jwtPayload = decodeJwtPayload(supabaseAnonKey)
+const keyRef = jwtPayload?.ref || null
+if (!urlRef) {
+  throw new Error(`VITE_SUPABASE_URL invalide: "${supabaseUrl}"`)
+}
+if (keyRef && keyRef !== urlRef) {
+  throw new Error(
+    `Mauvaise configuration Supabase: l'URL pointe vers "${urlRef}" mais la clé ANON appartient à "${keyRef}". ` +
+      `Mettez à jour VITE_SUPABASE_ANON_KEY (Supabase Dashboard → Project Settings → API).`,
+  )
+}
 
-// ─── Auth helpers ────────────────────────────────────────────────────────────
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession:     true,
+    autoRefreshToken:   true,
+    detectSessionInUrl: true,
+    storageKey:         'hmhouticars-auth',
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 10,
+    },
+  },
+})
+
+// ─── Auth helpers ─────────────────────────────────────────────────────────────
 
 export async function signUp({ email, password, fullName, phone }) {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: {
-      data: { full_name: fullName, phone },
-    },
+    options: { data: { full_name: fullName, phone } },
   })
   if (error) throw error
 
-  // Insert profile row
   if (data.user) {
     const { error: profileError } = await supabase.from('profiles').upsert({
-      id: data.user.id,
+      id:        data.user.id,
       full_name: fullName,
       phone,
       email,
-      role: 'client',
+      role:      'client',
     }, { onConflict: 'id' })
-    if (profileError) {
-      console.warn('[signUp] profile upsert:', profileError.message)
-    }
+    if (profileError) console.warn('[signUp] profile upsert:', profileError.message)
   }
   return data
 }
@@ -75,20 +130,19 @@ export async function getProfile(userId) {
 export async function updateProfile(userId, updates) {
   const { error } = await supabase
     .from('profiles')
-    .update(updates)
+    .update({ ...updates, updated_at: new Date().toISOString() })
     .eq('id', userId)
   if (error) throw error
 }
 
-// ─── Reservations ────────────────────────────────────────────────────────────
+// ─── Reservations helpers ─────────────────────────────────────────────────────
 
-/** Expand reservation date ranges into individual YYYY-MM-DD strings (inclusive). */
 export function expandReservationDates(ranges) {
   const dates = new Set()
   for (const row of ranges || []) {
     if (!row?.start_date || !row?.end_date) continue
     const start = new Date(`${row.start_date}T00:00:00`)
-    const end = new Date(`${row.end_date}T00:00:00`)
+    const end   = new Date(`${row.end_date}T00:00:00`)
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) continue
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       dates.add(d.toISOString().split('T')[0])
@@ -97,73 +151,82 @@ export function expandReservationDates(ranges) {
   return [...dates]
 }
 
-/** Booked days for a car (pending + confirmed) — used by availability calendar. */
+/** Booked days for a car — only confirmed/completed block new bookings */
 export async function getCarBookedDates(carId) {
   const { data, error } = await supabase
     .from('reservations')
     .select('start_date, end_date')
     .eq('car_id', carId)
-    .in('status', ['pending', 'confirmed'])
+    .in('status', ['confirmed', 'completed'])
   if (error) throw error
   return expandReservationDates(data)
 }
 
-/** Storage paths or URLs for jsonb documents column */
 export function sanitizeReservationDocuments(documents) {
   if (!documents || typeof documents !== 'object') return {}
   const out = {}
   for (const [key, value] of Object.entries(documents)) {
     if (typeof value === 'string' && value.length > 0) out[key] = value
+    else if (value && typeof value === 'object' && value.url) out[key] = value.url
   }
   return out
 }
 
-/** Map UI reservation payload → PostgREST row (supports v3 + legacy column names). */
-export function mapReservationToRow(reservation) {
-  const docUrls = sanitizeReservationDocuments(reservation.documents)
-  const notesParts = []
-  if (reservation.notes) notesParts.push(reservation.notes)
-  if (reservation.pickup_location) notesParts.push(`Prise en charge: ${reservation.pickup_location}`)
-  if (reservation.return_location) notesParts.push(`Retour: ${reservation.return_location}`)
-  if (Object.keys(docUrls).length > 0) {
-    notesParts.push(`Documents: ${JSON.stringify(docUrls)}`)
-  }
-
-  const row = {
-    user_id: reservation.user_id,
-    car_id: reservation.car_id,
-    car_name: reservation.car_name,
-    car_price: reservation.car_price,
-    start_date: reservation.start_date,
-    end_date: reservation.end_date,
-    days: reservation.days,
-    payment_method: reservation.payment_method,
-    customer_name: reservation.customer_name,
-    customer_email: reservation.customer_email,
-    customer_phone: reservation.customer_phone,
-    status: reservation.status ?? 'pending',
-    notes: notesParts.length ? notesParts.join('\n') : null,
-    cin_front_url: reservation.cin_front_url ?? null,
-    cin_back_url: reservation.cin_back_url ?? null,
-    permis_front_url: reservation.permis_front_url ?? null,
-    permis_back_url: reservation.permis_back_url ?? null,
-    reference: reservation.ref,
-    total_price: reservation.total,
-    ref: reservation.ref,
-    total: reservation.total,
-    pickup_location: reservation.pickup_location,
-    return_location: reservation.return_location,
-    documents: docUrls,
-  }
-
-  return row
+function getJoinedProfile(row) {
+  const p = row?.profiles
+  if (!p) return null
+  return Array.isArray(p) ? p[0] : p
 }
 
-/** Map DB row → UI shape used by dashboards and receipt modal. */
+/** Strip system-injected location lines from notes for admin display. */
+export function cleanReservationNotes(notes) {
+  if (!notes || typeof notes !== 'string') return null
+  const cleaned = notes
+    .split('\n')
+    .filter((line) => !/^(Prise en charge|Retour)\s*:/i.test(line.trim()))
+    .join('\n')
+    .trim()
+  return cleaned || null
+}
+
+export function mapReservationToRow(reservation) {
+  const docUrls = sanitizeReservationDocuments(reservation.documents)
+  const totalRounded = Math.round(Number(reservation.total) || 0)
+
+  return {
+    user_id:          reservation.user_id,
+    car_id:           reservation.car_id,
+    car_name:         reservation.car_name,
+    car_price:        reservation.car_price   ?? 0,
+    start_date:       reservation.start_date,
+    end_date:         reservation.end_date,
+    days:             reservation.days         ?? 1,
+    payment_method:   reservation.payment_method ?? 'cash',
+    customer_name:    reservation.customer_name  ?? null,
+    customer_email:   reservation.customer_email ?? null,
+    customer_phone:   reservation.customer_phone ?? null,
+    status:           reservation.status         ?? 'pending',
+    notes:            reservation.notes || null,
+    cin_front_url:    reservation.cin_front_url    ?? null,
+    cin_back_url:     reservation.cin_back_url     ?? null,
+    permis_front_url: reservation.permis_front_url ?? null,
+    permis_back_url:  reservation.permis_back_url  ?? null,
+    ref:              reservation.ref      ?? null,
+    reference:        reservation.ref      ?? null,
+    total:            totalRounded || null,
+    total_price:      totalRounded || null,
+    pickup_location:  reservation.pickup_location ?? null,
+    return_location:  reservation.return_location ?? null,
+    documents:        Object.keys(docUrls).length ? docUrls : {},
+  }
+}
+
 export function mapRowToReservation(row) {
   if (!row) return row
+  const profile = getJoinedProfile(row)
   let pickup_location = row.pickup_location
   let return_location = row.return_location
+  // Fallback: extraire depuis notes si colonnes manquantes (legacy rows)
   if (row.notes) {
     if (!pickup_location) {
       const m = row.notes.match(/Prise en charge:\s*(.+?)(?:\n|$)/i)
@@ -174,34 +237,70 @@ export function mapRowToReservation(row) {
       if (m) return_location = m[1].trim()
     }
   }
+  const total = Number(row.total ?? row.total_price ?? 0) || 0
   return {
     ...row,
-    ref: row.ref ?? row.reference ?? '—',
-    total: row.total ?? row.total_price ?? 0,
-    pickup_location: pickup_location ?? '—',
-    return_location: return_location ?? '—',
+    ref:              row.ref ?? row.reference ?? '—',
+    total,
+    customer_name:    row.customer_name || profile?.full_name || null,
+    customer_email:   row.customer_email || profile?.email || null,
+    customer_phone:   row.customer_phone || profile?.phone || null,
+    pickup_location:  pickup_location || '—',
+    return_location:  return_location || '—',
+    notes:            cleanReservationNotes(row.notes),
+    profiles:         profile || row.profiles,
   }
 }
 
 export async function createReservation(reservation) {
-  const baseRow = mapReservationToRow(reservation)
-  let { data, error } = await supabase.from('reservations').insert(baseRow).select().single()
+  // FIX : seuls confirmed/completed bloquent — pending = juste une demande
+  const { data: overlaps, error: overlapError } = await supabase
+    .from('reservations')
+    .select('id')
+    .eq('car_id', reservation.car_id)
+    .in('status', ['confirmed', 'completed'])
+    .lte('start_date', reservation.end_date)
+    .gte('end_date', reservation.start_date)
+    .limit(1)
 
-  // Retry without v3-only columns if schema cache lacks them
+  if (overlapError) throw overlapError
+  if (overlaps?.length) {
+    throw new Error('Ce véhicule est déjà confirmé sur ces dates. Choisissez d\'autres dates.')
+  }
+
+  const baseRow = mapReservationToRow(reservation)
+
+  /**
+   * PRODUCTION FIX:
+   * After deployments/migrations, Supabase PostgREST can temporarily run with a stale
+   * schema cache and throw errors like PGRST204 / "schema cache". That makes the
+   * reservation flow feel "randomly broken".
+   *
+   * Strategy:
+   * - attempt insert
+   * - if schema-cache related, retry once after a short delay
+   * - keep the existing legacy retry for PGRST204 (older column set)
+   */
+  const insertOnce = async (row) => supabase.from('reservations').insert(row).select().single()
+
+  let { data, error } = await insertOnce(baseRow)
+
+  if (error && (error.code === 'PGRST204' || /schema cache/i.test(error.message || ''))) {
+    // Short backoff then retry once
+    await new Promise((r) => setTimeout(r, 600))
+    ;({ data, error } = await insertOnce(baseRow))
+  }
+
+  // FIX : retry sans colonnes v3+ si schema cache manquant (PGRST204)
   if (error?.code === 'PGRST204') {
     const {
-      ref: _r,
-      total: _t,
-      pickup_location: _p,
-      return_location: _rl,
-      documents: _d,
-      cin_front_url: _cf,
-      cin_back_url: _cb,
-      permis_front_url: _pf,
-      permis_back_url: _pb,
+      ref: _r, total: _t, pickup_location: _p, return_location: _rl,
+      documents: _d, cin_front_url: _cf, cin_back_url: _cb,
+      permis_front_url: _pf, permis_back_url: _pb,
+      reference: _ref, total_price: _tp,
       ...legacyRow
     } = baseRow
-    ;({ data, error } = await supabase.from('reservations').insert(legacyRow).select().single())
+    ;({ data, error } = await insertOnce(legacyRow))
   }
 
   if (error) throw error
@@ -218,13 +317,57 @@ export async function getUserReservations(userId) {
   return (data || []).map(mapRowToReservation)
 }
 
+function enrichReservationsWithProfiles(rows, profiles) {
+  const byId = Object.fromEntries((profiles || []).map((p) => [p.id, p]))
+  return rows.map((row) => {
+    const profile = row.user_id ? byId[row.user_id] : null
+    const pick = profile
+      ? { full_name: profile.full_name, email: profile.email, phone: profile.phone }
+      : row.profiles || null
+    return mapRowToReservation({
+      ...row,
+      profiles: pick,
+      customer_name: row.customer_name || profile?.full_name || null,
+      customer_email: row.customer_email || profile?.email || null,
+      customer_phone: row.customer_phone || profile?.phone || null,
+    })
+  })
+}
+
 export async function getAllReservations() {
   const { data, error } = await supabase
     .from('reservations')
-    .select(`*, profiles(full_name, email, phone)`)
+    .select('*, profiles(full_name, email, phone)')
     .order('created_at', { ascending: false })
-  if (error) throw error
-  return (data || []).map(mapRowToReservation)
+
+  if (!error) return (data || []).map(mapRowToReservation)
+
+  const schemaIssue =
+    error?.code === 'PGRST200' ||
+    /relationship|schema cache|incompatible/i.test(error?.message || '')
+
+  if (schemaIssue) {
+    console.warn(
+      '[getAllReservations] PostgREST embed unavailable — using plain select + profile merge:',
+      error.message,
+    )
+  } else {
+    console.warn('[getAllReservations] join failed:', error.message)
+  }
+
+  const { data: plain, error: plainErr } = await supabase
+    .from('reservations')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (plainErr) throw plainErr
+
+  const mapped = (plain || []).map(mapRowToReservation)
+  try {
+    const profiles = await getAllProfiles()
+    return enrichReservationsWithProfiles(mapped, profiles)
+  } catch {
+    return mapped
+  }
 }
 
 export async function updateReservationStatus(id, status) {
@@ -240,28 +383,59 @@ export async function deleteReservation(id) {
   if (error) throw error
 }
 
-// ─── Document upload ─────────────────────────────────────────────────────────
+// ─── Document upload ──────────────────────────────────────────────────────────
 
 export async function uploadDocument(userId, docType, file) {
-  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
-  const path = `${userId}/${docType}.${ext}`
+  // FIX : path = cin/{userId}/cin_front.jpg (aligné avec documentUpload.service.js)
+  const folder   = docType.startsWith('cin') ? 'cin' : 'permis'
+  const ext      = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
+  const path     = `${folder}/${userId}/${docType}.${ext}`
+
   const { error } = await supabase.storage.from('documents').upload(path, file, {
     cacheControl: '3600',
-    upsert: true,
-    contentType: file.type || 'image/jpeg',
+    upsert:       true,
+    contentType:  file.type || 'image/jpeg',
   })
   if (error) throw error
-  const { data } = supabase.storage.from('documents').getPublicUrl(path)
-  return data.publicUrl
+
+  // Documents bucket est privé → signed URL
+  const { data: signedData, error: signErr } = await supabase.storage
+    .from('documents')
+    .createSignedUrl(path, 60 * 60 * 24 * 365)
+  if (signErr) {
+    // Fallback : public URL si bucket rendu public
+    const { data } = supabase.storage.from('documents').getPublicUrl(path)
+    return data.publicUrl
+  }
+  return signedData.signedUrl
 }
 
-// ─── Admin ───────────────────────────────────────────────────────────────────
+// ─── Admin ────────────────────────────────────────────────────────────────────
+
+export function isSchemaOrRlsError(error) {
+  if (!error) return false
+  const code = error.code || ''
+  const msg = error.message || ''
+  return (
+    code === 'PGRST200' ||
+    code === 'PGRST204' ||
+    code === 'PGRST205' ||
+    code === '42P01' ||
+    /relationship|schema cache|incompatible|permission denied|row-level security/i.test(msg)
+  )
+}
 
 export async function getAllProfiles() {
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
     .order('created_at', { ascending: false })
-  if (error) throw error
+  if (error) {
+    if (isSchemaOrRlsError(error)) {
+      console.warn('[getAllProfiles]', error.message)
+      return []
+    }
+    throw error
+  }
   return data || []
 }
