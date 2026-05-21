@@ -7,7 +7,10 @@
     "dev": "vite",
     "dev:5173": "vite --host=0.0.0.0 --port=5173 --strictPort",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:auth": "powershell -ExecutionPolicy Bypass -File scripts/auth-e2e-test.ps1",
+    "test:auth:node": "node scripts/auth-e2e-test.mjs",
+    "test:auth:diag": "node scripts/diagnose-supabase-auth.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.0",

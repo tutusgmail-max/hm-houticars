@@ -29,7 +29,7 @@ export function AuthProvider({ children }) {
       setUserDocuments(docs)
       return docs
     } catch (err) {
-      console.warn('[AuthContext] loadUserDocuments:', err?.message)
+      if (import.meta.env.DEV) console.error('[AuthContext] loadUserDocuments:', err?.message)
       if (legacyProfile?.identity_documents) {
         const legacy = parseDocuments(legacyProfile.identity_documents)
         setUserDocuments(legacy)
@@ -63,8 +63,8 @@ export function AuthProvider({ children }) {
         setProfile(data)
         return data
       } catch (err) {
-        if (err?.code !== 'PGRST116') {
-          console.warn('[AuthContext] loadProfile error:', err?.message)
+        if (import.meta.env.DEV && err?.code !== 'PGRST116') {
+          console.error('[AuthContext] loadProfile:', err?.message)
         }
         setProfile(null)
         return null
@@ -118,6 +118,15 @@ export function AuthProvider({ children }) {
       setAuthLoading(false)
     }
 
+    const bootstrapTimeout = window.setTimeout(() => {
+      if (!mounted || bootstrappedRef.current) return
+      bootstrappedRef.current = true
+      setAuthLoading(false)
+      if (import.meta.env.DEV) {
+        console.error('[Auth] bootstrap timeout — INITIAL_SESSION not received')
+      }
+    }, 8000)
+
     const handleAuthEvent = (event, session) => {
       if (!mounted) return
 
@@ -167,6 +176,7 @@ export function AuthProvider({ children }) {
 
     return () => {
       mounted = false
+      window.clearTimeout(bootstrapTimeout)
       subscription.unsubscribe()
     }
   }, [])

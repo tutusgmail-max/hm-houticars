@@ -5,10 +5,10 @@ import { parseAuthError, AUTH_MESSAGES } from './authErrors'
 import { isAuthRateLimited } from './authRequestGuard'
 
 export function parseSupabaseError(err) {
-  if (!err) return AUTH_MESSAGES.connectionError
+  if (!err) return AUTH_MESSAGES.networkError
 
   if (isAuthRateLimited(err)) {
-    return AUTH_MESSAGES.connectionError
+    return AUTH_MESSAGES.retryLater
   }
 
   const code = err?.code || ''

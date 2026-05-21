@@ -161,8 +161,8 @@ export default function AuthModal() {
         if (generation !== submitGenerationRef.current) return
         if (!result?.session) {
           logAuthError('signIn.noSession', { message: 'missing session' })
-          setErrors({ form: AUTH_MESSAGES.connectionError })
-          addToast(AUTH_MESSAGES.connectionError, 'error')
+          setErrors({ form: AUTH_MESSAGES.networkError })
+          addToast(AUTH_MESSAGES.networkError, 'error')
           return
         }
         submitCompletedRef.current = true
