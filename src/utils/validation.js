@@ -2,7 +2,7 @@
  * validation.js
  * Pure validation functions — no side effects, fully testable.
  */
-import { isAuthRateLimited, isAuthThrottleError } from './authRequestGuard'
+import { isAuthRateLimited } from './authRequestGuard'
 
 export function validateEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
@@ -84,12 +84,12 @@ export function hasErrors(errors) {
 
 /** Map Supabase error messages → user-friendly French text */
 export function parseAuthError(err) {
-  if (isAuthThrottleError(err)) {
-    const sec = Math.max(1, Math.ceil((err.waitMs || 1000) / 1000))
-    return `Veuillez patienter ${sec}s avant de réessayer.`
-  }
+  const raw = err?.message || err?.error_description || ''
+  const msg = raw.toLowerCase()
 
-  const msg = (err?.message || err?.error_description || '').toLowerCase()
+  if (err?.code === 'AUTH_DEDUPE') {
+    return raw.replace(/^AUTH_DEDUPE:\s*/i, '')
+  }
 
   if (msg.includes('invalid login credentials') || msg.includes('invalid_credentials')) {
     return 'Email ou mot de passe incorrect.'
@@ -97,14 +97,17 @@ export function parseAuthError(err) {
   if (msg.includes('already registered') || msg.includes('already been registered') || msg.includes('user already registered')) {
     return 'Cet email existe déjà — connectez-vous en un clic.'
   }
-  if (msg.includes('email not confirmed')) {
-    return 'Connectez-vous pour continuer (aucune confirmation email requise).'
-  }
   if (msg.includes('password should be') || msg.includes('password is too weak')) {
     return 'Mot de passe : 6 caractères minimum.'
   }
   if (isAuthRateLimited(err)) {
-    return 'Petite pause côté serveur — attendez 20–30 secondes et réessayez une fois.'
+    if (msg.includes('after') && msg.includes('seconds')) {
+      return 'Trop de tentatives. Attendez une minute, puis utilisez « Connexion » si le compte existe déjà.'
+    }
+    return 'Trop de tentatives. Attendez une minute, puis réessayez.'
+  }
+  if (msg.includes('email not confirmed') || msg.includes('email_not_confirmed')) {
+    return 'Compte créé mais email non confirmé. Désactivez la confirmation email dans Supabase (Auth → Email) ou confirmez votre boîte mail.'
   }
   if (msg.includes('user not found')) return 'Aucun compte avec cet email. Créez un compte en quelques secondes.'
   if (msg.includes('network') || msg.includes('fetch')) {

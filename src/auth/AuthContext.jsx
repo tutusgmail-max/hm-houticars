@@ -1,19 +1,19 @@
 /**
- * AuthContext.jsx — session-first bootstrap, singleton listener, no duplicate events.
+ * AuthContext — single mount listener, no duplicate getSession/signUp triggers.
  */
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
-import { authGetSession, authOnChange, authSignOut } from '../services/auth.service'
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { authOnChange, authSignOut } from '../services/auth.service'
 import { fetchProfile } from '../services/profile.service'
 import { fetchUserDocuments, parseDocuments } from '../services/documentUpload.service'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user, setUser]                       = useState(null)
-  const [profile, setProfile]                 = useState(null)
-  const [userDocuments, setUserDocuments]     = useState(null)
-  const [authLoading, setAuthLoading]         = useState(true)
-  const [profileLoading, setProfileLoading]   = useState(false)
+  const [user, setUser] = useState(null)
+  const [profile, setProfile] = useState(null)
+  const [userDocuments, setUserDocuments] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [profileLoading, setProfileLoading] = useState(false)
   const [documentsLoading, setDocumentsLoading] = useState(false)
 
   const bootstrappedRef = useRef(false)
@@ -78,7 +78,8 @@ export function AuthProvider({ children }) {
     return promise
   }, [])
 
-  const refreshSession = useCallback(async (sessionUser) => {
+  const refreshSessionRef = useRef(null)
+  refreshSessionRef.current = async (sessionUser) => {
     if (!sessionUser) {
       setProfile(null)
       setUserDocuments(null)
@@ -87,45 +88,39 @@ export function AuthProvider({ children }) {
     }
     const prof = await loadProfile(sessionUser)
     await loadUserDocuments(sessionUser.id, prof)
-  }, [loadProfile, loadUserDocuments])
+  }
 
-  const applySession = useCallback((sessionUser, { refreshProfile = false } = {}) => {
+  const applySessionRef = useRef(null)
+  applySessionRef.current = (sessionUser, { refreshProfile = false } = {}) => {
     const prevId = userIdRef.current
     const nextId = sessionUser?.id ?? null
     userIdRef.current = nextId
     setUser(sessionUser)
 
     if (sessionUser && (refreshProfile || nextId !== prevId)) {
-      refreshSession(sessionUser).catch(() => {})
+      refreshSessionRef.current(sessionUser).catch(() => {})
     }
     if (!sessionUser) {
       setProfile(null)
       setUserDocuments(null)
       profileInflightRef.current.clear()
     }
-  }, [refreshSession])
+  }
 
+  // ONE effect, empty deps — never re-subscribe on render (prevents listener/callback leaks)
   useEffect(() => {
     let mounted = true
 
     const finishBootstrap = (sessionUser) => {
       if (!mounted || bootstrappedRef.current) return
       bootstrappedRef.current = true
-      applySession(sessionUser, { refreshProfile: !!sessionUser })
+      applySessionRef.current(sessionUser, { refreshProfile: !!sessionUser })
       setAuthLoading(false)
     }
 
-    authGetSession()
-      .then((session) => finishBootstrap(session?.user ?? null))
-      .catch(() => {
-        if (mounted && !bootstrappedRef.current) {
-          bootstrappedRef.current = true
-          setAuthLoading(false)
-        }
-      })
-
     const handleAuthEvent = (event, session) => {
       if (!mounted) return
+
       if (event === 'TOKEN_REFRESHED') return
 
       const sessionUser = session?.user ?? null
@@ -143,16 +138,15 @@ export function AuthProvider({ children }) {
       setAuthLoading(false)
 
       if (event === 'SIGNED_OUT') {
-        applySession(null)
+        applySessionRef.current(null)
         return
       }
 
-      // Dedupe duplicate SIGNED_IN bursts (signUp + listener)
       if (event === 'SIGNED_IN' && sessionUser?.id) {
         const now = Date.now()
         if (
           lastSignedInRef.current.userId === sessionUser.id
-          && now - lastSignedInRef.current.at < 2500
+          && now - lastSignedInRef.current.at < 3000
         ) {
           setUser(sessionUser)
           return
@@ -162,44 +156,54 @@ export function AuthProvider({ children }) {
 
       if (sessionUser) {
         const refreshProfile = event === 'SIGNED_IN' || event === 'USER_UPDATED'
-        applySession(sessionUser, { refreshProfile })
+        applySessionRef.current(sessionUser, { refreshProfile })
       } else {
-        applySession(null)
+        applySessionRef.current(null)
       }
     }
 
-    const subscription = authOnChange((event, session) => {
-      // Defer to avoid Supabase auth deadlocks / duplicate sync calls
-      queueMicrotask(() => handleAuthEvent(event, session))
-    })
+    const subscription = authOnChange(handleAuthEvent)
 
     return () => {
       mounted = false
       subscription.unsubscribe()
     }
-  }, [applySession])
+  }, [])
 
   const signOut = useCallback(async () => {
     await authSignOut()
   }, [])
 
-  const isAdmin         = profile?.role === 'admin'
+  const isAdmin = profile?.role === 'admin'
   const isEmailVerified = true
 
+  const value = useMemo(() => ({
+    user,
+    profile,
+    userDocuments,
+    authLoading,
+    profileLoading,
+    documentsLoading,
+    isAdmin,
+    isEmailVerified,
+    loadProfile,
+    loadUserDocuments,
+    signOut,
+  }), [
+    user,
+    profile,
+    userDocuments,
+    authLoading,
+    profileLoading,
+    documentsLoading,
+    isAdmin,
+    loadProfile,
+    loadUserDocuments,
+    signOut,
+  ])
+
   return (
-    <AuthContext.Provider value={{
-      user,
-      profile,
-      userDocuments,
-      authLoading,
-      profileLoading,
-      documentsLoading,
-      isAdmin,
-      isEmailVerified,
-      loadProfile,
-      loadUserDocuments,
-      signOut,
-    }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   )

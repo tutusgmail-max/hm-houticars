@@ -23,6 +23,7 @@ import { fetchCarReservations, enumerateDateRange, BLOCKING_STATUSES } from '../
 import { updateProfileData } from '../../services/profile.service'
 import { LOCATIONS } from '../../data'
 import { getCarDisplayImage } from '../../services/cars.service'
+import { parseSupabaseError } from '../../utils/supabaseErrors'
 
 const STEPS = ['Véhicule', 'Détails', 'Confirmation']
 
@@ -35,8 +36,7 @@ const REQUIRED_DOCS = [
 
 const PENDING_KEY  = 'hmhouticars.pendingBooking.v3'
 const PREFILL_KEY  = 'hmhouticars.userPrefill.v1'
-const AUTH_MSG     = 'Dernière étape : email + mot de passe (30 s) pour confirmer.'
-const AUTH_MSG_SOFT = 'Parcours invité — compte uniquement à la confirmation.'
+const AUTH_MSG = 'Connectez-vous ou créez un compte pour finaliser votre réservation.'
 
 const MONTHS_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
 const DAYS_FR   = ['Lu','Ma','Me','Je','Ve','Sa','Di']
@@ -393,6 +393,8 @@ export default function BookingModal() {
   const [form,     setForm]     = useState(() => initForm(null, null))
   const [docPrev,  setDocPrev]  = useState({})
   const fileRefs = useRef({})
+  const authPromptedRef = useRef(false)
+  const confirmLockRef = useRef(false)
 
   const saveStatus = useAutoSave(user?.id, form)
 
@@ -402,7 +404,7 @@ export default function BookingModal() {
 
   const { bookedDates, blockedDates, pendingDates, loading:availLoading, isRangeBlocked } = useCarAvailability(car?.id)
 
-  // Init on open — guests can browse dates; auth only required to confirm
+  // Init on open (authenticated users only — guests are prompted via openBooking)
   useEffect(() => {
     if (!bookingModal || authLoading) return
     const carId = bookingModal.car?.id
@@ -410,8 +412,10 @@ export default function BookingModal() {
     setForm(pending ?? initForm(profile, user, bookingModal.prefStart, bookingModal.prefEnd))
     setStep(0); setErrors({}); setDocPrev({}); setLoading(false); setProgress('')
     fileRefs.current = {}
+    authPromptedRef.current = false
+    confirmLockRef.current = false
     if (!pending) clearSession()
-  }, [bookingModal, authLoading, user]) // eslint-disable-line
+  }, [bookingModal, authLoading, user?.id]) // eslint-disable-line
 
   // Sync profile into form if profile loads after modal open
   useEffect(() => {
@@ -461,6 +465,10 @@ export default function BookingModal() {
     return Object.keys(e).length === 0
   }
 
+  const showStepErrors = () => {
+    addToast('Veuillez compléter les champs obligatoires.', 'error')
+  }
+
   const validate = () => {
     if (!validateDatesAndContact()) return false
     const docErrors = {}
@@ -475,6 +483,8 @@ export default function BookingModal() {
   }
 
   const promptAuthForBooking = (preferSignup = true) => {
+    if (authPromptedRef.current) return
+    authPromptedRef.current = true
     saveSession(car.id, form)
     savePendingBooking?.(car, form.start, form.end)
     openAuth(preferSignup ? 'signup' : 'login', AUTH_MSG)
@@ -482,27 +492,37 @@ export default function BookingModal() {
 
   const goNext = () => {
     if (step === 0) {
-      if (!validateDatesAndContact()) return
+      setErrors({})
       setStep(1)
       return
     }
     if (step === 1) {
-      if (!validateDatesAndContact()) return
-      if (user && !validate()) return
+      if (!user) {
+        promptAuthForBooking(true)
+        return
+      }
+      if (!validateDatesAndContact()) {
+        showStepErrors()
+        return
+      }
+      if (!validate()) {
+        showStepErrors()
+        return
+      }
       setStep(2)
     }
   }
   const goBack = () => { setErrors({}); setStep(p => Math.max(p-1, 0)) }
 
   const confirm = async () => {
-    // PRODUCTION FIX: prevent double-submit from fast double clicks / lag spikes
-    if (loading) return
+    if (loading || confirmLockRef.current) return
     if (!user) { promptAuthForBooking(true); return }
     if (!validate()) { setStep(1); return }
     if (isRangeBlocked(form.start, form.end)) {
       addToast('Ces dates sont désormais confirmées.','error')
       setErrors({form:'Ces dates ne sont plus disponibles.'}); setStep(1); return
     }
+    confirmLockRef.current = true
     setLoading(true)
     const ref = `HM${Date.now().toString().slice(-6)}`
     try {
@@ -542,9 +562,13 @@ export default function BookingModal() {
     } catch (err) {
       const msg = err?.message?.includes('déjà confirmé')
         ? "Ce véhicule est déjà confirmé sur ces dates."
-        : (err?.message || 'Erreur lors de la réservation. Veuillez réessayer.')
+        : parseSupabaseError(err)
       addToast(msg,'error'); setErrors({form:msg})
-    } finally { setLoading(false); setProgress('') }
+    } finally {
+      setLoading(false)
+      setProgress('')
+      confirmLockRef.current = false
+    }
   }
 
   return (
@@ -584,19 +608,15 @@ export default function BookingModal() {
               <StepNav step={step} />
 
               {!user && (
-                <div
-                  className="mb-5 flex flex-col gap-2 rounded-xl border border-gold/20 bg-gold/[0.06] px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <p className="text-xs leading-relaxed text-white/70">{AUTH_MSG_SOFT}</p>
-                  {step >= 1 && (
-                    <button
-                      type="button"
-                      onClick={() => promptAuthForBooking(true)}
-                      className="shrink-0 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-gold transition hover:bg-gold/20"
-                    >
-                      Compte rapide (optionnel)
-                    </button>
-                  )}
+                <div className="mb-5 rounded-xl border border-amber-400/25 bg-amber-400/[0.08] px-4 py-3">
+                  <p className="text-xs leading-relaxed text-amber-100/90">{AUTH_MSG}</p>
+                  <button
+                    type="button"
+                    onClick={() => promptAuthForBooking(true)}
+                    className="mt-3 w-full rounded-lg border border-gold/30 bg-gold/10 px-3 py-2.5 text-[11px] font-bold uppercase tracking-wide text-gold transition hover:bg-gold/20 sm:w-auto"
+                  >
+                    Se connecter / Créer un compte
+                  </button>
                 </div>
               )}
 
@@ -635,10 +655,14 @@ export default function BookingModal() {
                 </button>
                 <div className="flex-1" />
                 {step < 2 ? (
-                  <button type="button" onClick={goNext} disabled={authLoading}
-                    className="btn-gold inline-flex items-center justify-center gap-2 px-8 py-3 text-[13px] disabled:cursor-not-allowed disabled:opacity-60">
+                  <button
+                    type="button"
+                    onClick={goNext}
+                    disabled={authLoading || (step === 1 && !user)}
+                    className="btn-gold inline-flex items-center justify-center gap-2 px-8 py-3 text-[13px] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
                     {authLoading ? <FiLoader className="animate-spin" /> : null}
-                    Continuer →
+                    {step === 0 ? 'Continuer — étape 2' : 'Continuer — confirmation'}
                   </button>
                 ) : (
                   <button type="button" onClick={confirm} disabled={loading}
@@ -723,7 +747,7 @@ function StepVehicle({ car, availLoading }) {
         <div className="mt-5 flex items-center gap-2 text-sm text-white/35"><FiLoader className="animate-spin" size={14} /> Vérification disponibilité...</div>
       ) : (
         <div className="mt-5 flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] p-3 text-sm text-emerald-300">
-          <FiCheckCircle className="shrink-0" /> Disponibilité vérifiée — sélectionnez vos dates à l'étape suivante.
+          <FiCheckCircle className="shrink-0" /> Disponibilité vérifiée — renseignez vos dates à l&apos;étape suivante.
         </div>
       )}
     </div>

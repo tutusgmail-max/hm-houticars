@@ -139,11 +139,11 @@ export function AdminDataProvider({ children }) {
       try { await fetchNotifications() } catch (_) {}
 
       if (failed.length === 3) {
-        const msg =
-          resR.reason?.message ||
-          profR.reason?.message ||
-          fleetR.reason?.message ||
-          'Erreur chargement données admin'
+        const raw =
+          resR.reason ||
+          profR.reason ||
+          fleetR.reason
+        const msg = raw?.message || 'Erreur chargement données admin'
         throw new Error(msg)
       }
       if (failed.length > 0) {

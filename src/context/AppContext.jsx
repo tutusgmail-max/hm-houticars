@@ -26,7 +26,7 @@
  *    potentially stale `id`. Fixed with functional updater (already done)
  *    but also capped concurrent toasts at 5 to prevent UI overflow.
  */
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 const AppContext = createContext(null)
 
 // BUG FIX: Use same key as BookingModal so pending booking survives
@@ -74,10 +74,14 @@ export function AppProvider({ children }) {
     } catch {}
   }, [])
 
-  /** Guest-first booking — no auth API call on open; pass isAuthenticated from useAuth() */
+  /** Booking requires authentication — guests are prompted to sign up / log in first */
   const openBooking = useCallback((car, prefStart = '', prefEnd = '', isAuthenticated = false) => {
+    if (!car) return
     if (!isAuthenticated) {
       savePendingBooking(car, prefStart, prefEnd)
+      setAuthNotice(BOOKING_AUTH_MESSAGE)
+      setAuthModal('signup')
+      return
     }
     setBookingModal({ car, prefStart, prefEnd })
   }, [savePendingBooking])
@@ -124,15 +128,24 @@ export function AppProvider({ children }) {
 
   const removeToast = useCallback((id) => setToasts((p) => p.filter((t) => t.id !== id)), [])
 
+  const value = useMemo(() => ({
+    activeSection, scrollTo,
+    bookingModal, openBooking, closeBooking, savePendingBooking, resumePendingBooking,
+    receipt, openReceipt, closeReceipt,
+    authModal, authNotice, openAuth, closeAuth,
+    toasts, addToast, removeToast,
+    mobileOpen, setMobileOpen,
+  }), [
+    activeSection, scrollTo,
+    bookingModal, openBooking, closeBooking, savePendingBooking, resumePendingBooking,
+    receipt, openReceipt, closeReceipt,
+    authModal, authNotice, openAuth, closeAuth,
+    toasts, addToast, removeToast,
+    mobileOpen,
+  ])
+
   return (
-    <AppContext.Provider value={{
-      activeSection, scrollTo,
-      bookingModal, openBooking, closeBooking, savePendingBooking, resumePendingBooking,
-      receipt, openReceipt, closeReceipt,
-      authModal, authNotice, openAuth, closeAuth,
-      toasts, addToast, removeToast,
-      mobileOpen, setMobileOpen,
-    }}>
+    <AppContext.Provider value={value}>
       {children}
     </AppContext.Provider>
   )

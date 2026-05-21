@@ -1,47 +1,45 @@
 /**
- * auth.service.js
- * Single gateway for Supabase auth — prevents duplicate API calls.
+ * auth.service.js — single Supabase client, single auth listener, guarded signUp.
  */
 import { supabase } from '../lib/supabase'
 import { normalizeAuthEmail, runAuthRequest } from '../utils/authRequestGuard'
 
-// ── Singleton session bootstrap (StrictMode-safe) ───────────────────────────
-let sessionBootstrapPromise = null
+const AUTH_DEBUG = import.meta.env.DEV
 
-export async function authGetSession() {
-  if (!sessionBootstrapPromise) {
-    sessionBootstrapPromise = supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (error) throw error
-      return session
-    })
-  }
-  return sessionBootstrapPromise
+function logAuthError(step, error) {
+  if (!AUTH_DEBUG) return
+  console.warn(`[auth] ${step}`, error?.message || error)
 }
 
-// ── Singleton auth state listener (one subscription for entire app) ─────────
-const authSubscribers = new Set()
 let authSubscription = null
+let authListenerCallback = null
 
 export function authOnChange(callback) {
-  authSubscribers.add(callback)
+  authListenerCallback = callback
 
   if (!authSubscription) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      authSubscribers.forEach((cb) => {
-        try { cb(event, session) } catch (e) { console.warn('[authOnChange]', e) }
-      })
+      authListenerCallback?.(event, session)
     })
     authSubscription = subscription
   }
 
   return {
     unsubscribe: () => {
-      authSubscribers.delete(callback)
+      if (authListenerCallback === callback) {
+        authListenerCallback = null
+      }
     },
   }
 }
 
-// ── Sign Up (single signUp call — no follow-up signIn) ───────────────────────
+export async function authGetSession() {
+  const { data: { session }, error } = await supabase.auth.getSession()
+  if (error) throw error
+  return session
+}
+
+/** Sign up — one HTTP call per submit; no chained signIn */
 export async function authSignUp({ email, password, fullName, phone }) {
   const normalizedEmail = normalizeAuthEmail(email)
   const displayName = (fullName || '').trim() || normalizedEmail.split('@')[0] || 'Client'
@@ -55,25 +53,14 @@ export async function authSignUp({ email, password, fullName, phone }) {
         data: { full_name: displayName, phone: displayPhone },
       },
     })
-    if (error) throw error
-
-    if (data.user) {
-      supabase.from('profiles').upsert({
-        id: data.user.id,
-        full_name: displayName,
-        phone: displayPhone,
-        email: normalizedEmail,
-        role: 'client',
-      }, { onConflict: 'id' }).then(({ error: profileError }) => {
-        if (profileError) console.warn('[authSignUp] profile upsert:', profileError.message)
-      })
+    if (error) {
+      logAuthError('signUp', error)
+      throw error
     }
-
     return data
   })
 }
 
-// ── Sign In ──────────────────────────────────────────────────────────────────
 export async function authSignIn({ email, password }) {
   const normalizedEmail = normalizeAuthEmail(email)
 
@@ -82,19 +69,22 @@ export async function authSignIn({ email, password }) {
       email: normalizedEmail,
       password,
     })
-    if (error) throw error
+    if (error) {
+      logAuthError('signIn', error)
+      throw error
+    }
     return data
   })
 }
 
-// ── Sign Out ─────────────────────────────────────────────────────────────────
 export async function authSignOut() {
-  sessionBootstrapPromise = null
   const { error } = await supabase.auth.signOut()
-  if (error) throw error
+  if (error) {
+    logAuthError('signOut', error)
+    throw error
+  }
 }
 
-// ── Forgot Password ──────────────────────────────────────────────────────────
 export async function authForgotPassword(email) {
   const normalizedEmail = normalizeAuthEmail(email)
 
@@ -102,21 +92,29 @@ export async function authForgotPassword(email) {
     const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
       redirectTo: `${window.location.origin}/reset-password`,
     })
-    if (error) throw error
+    if (error) {
+      logAuthError('forgotPassword', error)
+      throw error
+    }
   })
 }
 
-// ── Reset Password ───────────────────────────────────────────────────────────
 export async function authResetPassword(newPassword) {
   return runAuthRequest('resetPassword', 'session', async () => {
     const { error } = await supabase.auth.updateUser({ password: newPassword })
-    if (error) throw error
+    if (error) {
+      logAuthError('resetPassword', error)
+      throw error
+    }
   })
 }
 
 export async function authChangePassword(newPassword) {
-  return runAuthRequest('resetPassword', 'change', async () => {
+  return runAuthRequest('changePassword', 'change', async () => {
     const { error } = await supabase.auth.updateUser({ password: newPassword })
-    if (error) throw error
+    if (error) {
+      logAuthError('changePassword', error)
+      throw error
+    }
   })
 }

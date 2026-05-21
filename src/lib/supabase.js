@@ -61,12 +61,24 @@ if (keyRef && keyRef !== urlRef) {
       `Mettez à jour VITE_SUPABASE_ANON_KEY (Supabase Dashboard → Project Settings → API).`,
   )
 }
+if (jwtPayload?.role === 'service_role') {
+  throw new Error(
+    'Clé service_role détectée dans VITE_SUPABASE_ANON_KEY. Utilisez uniquement la clé « anon » (publique) côté frontend.',
+  )
+}
+
+/** Only parse OAuth/recovery tokens on routes that need them (avoids stray hash processing) */
+function shouldDetectSessionInUrl() {
+  if (typeof window === 'undefined') return false
+  const path = window.location.pathname || ''
+  return path === '/reset-password' || window.location.hash.includes('access_token')
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession:     true,
     autoRefreshToken:   true,
-    detectSessionInUrl: true,
+    detectSessionInUrl: shouldDetectSessionInUrl(),
     storageKey:         'hmhouticars-auth',
   },
   realtime: {
@@ -76,46 +88,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 })
 
-// ─── Auth helpers ─────────────────────────────────────────────────────────────
-
-export async function signUp({ email, password, fullName, phone }) {
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: { data: { full_name: fullName, phone } },
-  })
-  if (error) throw error
-
-  if (data.user) {
-    const { error: profileError } = await supabase.from('profiles').upsert({
-      id:        data.user.id,
-      full_name: fullName,
-      phone,
-      email,
-      role:      'client',
-    }, { onConflict: 'id' })
-    if (profileError) console.warn('[signUp] profile upsert:', profileError.message)
-  }
-  return data
-}
-
-export async function signIn({ email, password }) {
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-  if (error) throw error
-  return data
-}
-
-export async function signOut() {
-  const { error } = await supabase.auth.signOut()
-  if (error) throw error
-}
-
-export async function resetPassword(email) {
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/reset-password`,
-  })
-  if (error) throw error
-}
+// Auth: use src/services/auth.service.js (single gateway — avoids duplicate API calls)
 
 export async function getProfile(userId) {
   const { data, error } = await supabase

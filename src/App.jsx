@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect } from 'react'
+import React, { lazy, Suspense, useEffect, useRef } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 
 import { AppProvider } from './context/AppContext'
@@ -17,6 +17,7 @@ import BookingModal from './components/modals/BookingModal'
 import ReceiptModal from './components/modals/ReceiptModal'
 
 import ProtectedRoute from './auth/ProtectedRoute'
+import ErrorBoundary from './components/ui/ErrorBoundary'
 
 import HomePage from './pages/HomePage'
 import DashboardPage from './pages/DashboardPage'
@@ -29,12 +30,20 @@ function AppShell() {
   const { resumePendingBooking } = useApp()
   const location = useLocation()
   const isAdminRoute = location.pathname.startsWith('/admin')
+  const resumedForUserIdRef = useRef(null)
 
+  // Resume pending booking ONCE per user id (avoids effect loops on user object churn)
   useEffect(() => {
-    if (!authLoading && user) {
-      resumePendingBooking()
+    const userId = user?.id
+    if (!userId) {
+      resumedForUserIdRef.current = null
+      return
     }
-  }, [authLoading, user, resumePendingBooking])
+    if (authLoading) return
+    if (resumedForUserIdRef.current === userId) return
+    resumedForUserIdRef.current = userId
+    resumePendingBooking()
+  }, [authLoading, user?.id, resumePendingBooking])
 
   if (authLoading) {
     return <FullPageLoader />
@@ -98,12 +107,14 @@ function AppShell() {
  */
 export default function App() {
   return (
-    <AppProvider>
-      <AuthProvider>
-        <CarsProvider>
-          <AppShell />
-        </CarsProvider>
-      </AuthProvider>
-    </AppProvider>
+    <ErrorBoundary>
+      <AppProvider>
+        <AuthProvider>
+          <CarsProvider>
+            <AppShell />
+          </CarsProvider>
+        </AuthProvider>
+      </AppProvider>
+    </ErrorBoundary>
   )
 }

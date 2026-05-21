@@ -24,7 +24,6 @@ import {
   hasErrors,
   parseAuthError,
 } from '../../utils/validation'
-import { isAuthRateLimited, markAuthRateLimited } from '../../utils/authRequestGuard'
 import PasswordInput from '../auth/PasswordInput'
 
 const MODES = { login: 'login', signup: 'signup', forgot: 'forgot', sent: 'sent' }
@@ -98,13 +97,21 @@ export default function AuthModal() {
 
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState({})
-  const [form, setForm] = useState(emptyForm)
+  const [form, setForm] = useState(() => emptyForm())
   const [sentEmail, setSentEmail] = useState('')
 
   const firstInputRef = useRef(null)
   const submitLockRef = useRef(false)
+  const submitCompletedRef = useRef(false)
   const submitGenerationRef = useRef(0)
   const formRef = useRef(null)
+
+  useEffect(() => {
+    if (!authModal) {
+      submitLockRef.current = false
+      submitCompletedRef.current = false
+    }
+  }, [authModal])
 
   useEffect(() => {
     if (authModal) setTimeout(() => firstInputRef.current?.focus(), 150)
@@ -115,17 +122,10 @@ export default function AuthModal() {
     submitGenerationRef.current += 1
     setMode(next)
     setErrors({})
-    setForm(emptyForm)
+    setForm(emptyForm())
   }, [loading])
 
-  const isSubmitDisabled = loading
-
-  if (!authModal) return null
-
-  const upd = (k) => (e) => {
-    setForm((p) => ({ ...p, [k]: e.target.value }))
-    setErrors((p) => ({ ...p, [k]: undefined }))
-  }
+  const isSubmitDisabled = loading || submitCompletedRef.current
 
   const releaseSubmitLock = useCallback(() => {
     window.setTimeout(() => {
@@ -133,10 +133,15 @@ export default function AuthModal() {
     }, 500)
   }, [])
 
+  const upd = (k) => (e) => {
+    setForm((p) => ({ ...p, [k]: e.target.value }))
+    setErrors((p) => ({ ...p, [k]: undefined }))
+  }
+
   const handleSubmit = async (e) => {
     e?.preventDefault?.()
     e?.stopPropagation?.()
-    if (submitLockRef.current || loading) return
+    if (submitLockRef.current || submitCompletedRef.current || loading) return
 
     let errs = {}
     if (mode === MODES.login)  errs = validateLoginForm(form)
@@ -156,16 +161,29 @@ export default function AuthModal() {
         const result = await authSignIn({ email: form.email, password: form.password })
         if (generation !== submitGenerationRef.current) return
         if (!result?.session) throw new Error('Session introuvable après connexion.')
+        submitCompletedRef.current = true
         addToast('Bienvenue ! Connexion réussie.')
         closeAuth()
       } else if (submitMode === MODES.signup) {
         const result = await authSignUp({ email: form.email, password: form.password, fullName: form.fullName, phone: form.phone })
         if (generation !== submitGenerationRef.current) return
-        if (!result?.session && !result?.user) {
+        if (result?.session) {
+          submitCompletedRef.current = true
+          addToast('Compte créé — bienvenue chez HM Houti Cars !')
+          closeAuth()
+        } else if (result?.user) {
+          // Account exists but no session — do NOT call signUp again (Supabase rate-limits same email)
+          submitCompletedRef.current = true
+          const savedEmail = form.email
+          setForm({ ...emptyForm(), email: savedEmail })
+          setMode(MODES.login)
+          addToast(
+            'Compte créé. Connectez-vous avec votre mot de passe. (Si besoin : Supabase → Auth → Email → désactiver la confirmation.)',
+            'success',
+          )
+        } else {
           throw new Error('Compte non créé. Réessayez une fois.')
         }
-        addToast('Compte créé — bienvenue chez HM Houti Cars !')
-        closeAuth()
       } else if (submitMode === MODES.forgot) {
         await authForgotPassword(form.email)
         if (generation !== submitGenerationRef.current) return
@@ -176,10 +194,6 @@ export default function AuthModal() {
       if (generation !== submitGenerationRef.current) return
       const friendly = parseAuthError(err)
       setErrors({ form: friendly })
-
-      if (isAuthRateLimited(err)) {
-        markAuthRateLimited(form.email)
-      }
 
       const alreadyUsed = (err?.message || '').toLowerCase().includes('already')
       if (alreadyUsed && submitMode === MODES.signup) {
@@ -197,6 +211,8 @@ export default function AuthModal() {
       }
     }
   }
+
+  if (!authModal) return null
 
   const titles = {
     login:  'Connexion',
@@ -486,23 +502,6 @@ export default function AuthModal() {
                   )}
                 </div>
 
-                {/* Guest reservation — return to booking without account */}
-                {(mode === MODES.signup || (mode === MODES.login && authNotice)) && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.3 }}
-                    className="text-center"
-                  >
-                    <button
-                      type="button"
-                      onClick={closeAuth}
-                      className="text-white/25 text-[11px] bg-transparent border-none cursor-pointer hover:text-white/50 transition-colors"
-                    >
-                      Continuer ma réservation sans compte →
-                    </button>
-                  </motion.div>
-                )}
               </div>
             )}
           </div>

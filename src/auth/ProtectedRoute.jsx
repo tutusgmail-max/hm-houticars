@@ -17,11 +17,12 @@ import FullPageLoader from '../components/ui/FullPageLoader'
 export default function ProtectedRoute({ children, adminOnly = false }) {
   const { user, profile, authLoading, profileLoading, isAdmin, loadProfile } = useAuth()
   const { openAuth } = useApp()
+  const openAuthRef = useRef(openAuth)
+  openAuthRef.current = openAuth
   const [adminRetry, setAdminRetry] = useState(0)
   const retryTimerRef = useRef(null)
   const authPromptedRef = useRef(false)
 
-  // FIX: trigger auth modal via effect, not during render (once per visit)
   useEffect(() => {
     if (authLoading || user) {
       if (user) authPromptedRef.current = false
@@ -29,8 +30,8 @@ export default function ProtectedRoute({ children, adminOnly = false }) {
     }
     if (authPromptedRef.current) return
     authPromptedRef.current = true
-    openAuth('login')
-  }, [authLoading, user, openAuth])
+    openAuthRef.current('login')
+  }, [authLoading, user?.id])
 
   // PRODUCTION FIX:
   // If the user was just promoted to admin (or profile fetch previously failed),
