@@ -35,8 +35,8 @@ const REQUIRED_DOCS = [
 
 const PENDING_KEY  = 'hmhouticars.pendingBooking.v3'
 const PREFILL_KEY  = 'hmhouticars.userPrefill.v1'
-const AUTH_MSG     = 'Dernière étape : créez un compte gratuit (30 s) pour confirmer votre réservation.'
-const AUTH_MSG_SOFT = 'Compte gratuit à la confirmation — choisissez vos dates d’abord.'
+const AUTH_MSG     = 'Dernière étape : email + mot de passe (30 s) pour confirmer.'
+const AUTH_MSG_SOFT = 'Parcours invité — compte uniquement à la confirmation.'
 
 const MONTHS_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
 const DAYS_FR   = ['Lu','Ma','Me','Je','Ve','Sa','Di']
@@ -488,11 +488,7 @@ export default function BookingModal() {
     }
     if (step === 1) {
       if (!validateDatesAndContact()) return
-      if (!user) {
-        promptAuthForBooking(true)
-        return
-      }
-      if (!validate()) return
+      if (user && !validate()) return
       setStep(2)
     }
   }
@@ -592,13 +588,15 @@ export default function BookingModal() {
                   className="mb-5 flex flex-col gap-2 rounded-xl border border-gold/20 bg-gold/[0.06] px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <p className="text-xs leading-relaxed text-white/70">{AUTH_MSG_SOFT}</p>
-                  <button
-                    type="button"
-                    onClick={() => promptAuthForBooking(true)}
-                    className="shrink-0 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-gold transition hover:bg-gold/20"
-                  >
-                    Créer un compte rapide
-                  </button>
+                  {step >= 1 && (
+                    <button
+                      type="button"
+                      onClick={() => promptAuthForBooking(true)}
+                      className="shrink-0 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-gold transition hover:bg-gold/20"
+                    >
+                      Compte rapide (optionnel)
+                    </button>
+                  )}
                 </div>
               )}
 

@@ -9,14 +9,16 @@ import { normalizeAuthEmail, runAuthRequest } from '../utils/authRequestGuard'
 // ── Sign Up ─────────────────────────────────────────────────────────────────
 export async function authSignUp({ email, password, fullName, phone }) {
   const normalizedEmail = normalizeAuthEmail(email)
+  const displayName = (fullName || '').trim() || normalizedEmail.split('@')[0] || 'Client'
+  const displayPhone = (phone || '').trim()
 
   return runAuthRequest('signUp', normalizedEmail, async () => {
     const { data, error } = await supabase.auth.signUp({
       email: normalizedEmail,
       password,
       options: {
-        data: { full_name: fullName, phone },
-        // Email confirmation off in Supabase — users get immediate session access
+        data: { full_name: displayName, phone: displayPhone },
+        // Supabase dashboard: disable "Confirm email" for instant session
       },
     })
     if (error) throw error
@@ -25,8 +27,8 @@ export async function authSignUp({ email, password, fullName, phone }) {
     if (data.user) {
       const { error: profileError } = await supabase.from('profiles').upsert({
         id: data.user.id,
-        full_name: fullName,
-        phone,
+        full_name: displayName,
+        phone: displayPhone,
         email: normalizedEmail,
         role: 'client',
       }, { onConflict: 'id' })

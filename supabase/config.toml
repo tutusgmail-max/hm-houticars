@@ -63,6 +63,12 @@ jwt_aud = "authenticated"
 disable_signup = false
 enable_signup = true
 
+# Low-friction onboarding (mirror in Supabase Dashboard → Auth → Email)
+[auth.email]
+enable_signup = true
+double_confirm_changes = false
+enable_confirmations = false
+
 [storage]
 # Enable storage
 enabled = true

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { FiChevronLeft, FiChevronRight, FiUsers, FiSettings, FiCheck } from 'react-icons/fi'
 import { BsFuelPump } from 'react-icons/bs'
 import { useApp } from '../context/AppContext'
+import { useAuth } from '../auth/AuthContext'
 import { getCarDisplayImage } from '../services/cars.service'
 import LazyImage from './ui/LazyImage'
 
@@ -112,10 +113,11 @@ const Thumb = memo(({ car, active, onClick }) => (
 /* ─── Car Card ──────────────────────────────────────────────────────────────── */
 function CarCard({ car, direction }) {
   const { openBooking } = useApp()
+  const { user } = useAuth()
 
   const handleReserve = useCallback(() => {
-    if (car.available) openBooking(car)
-  }, [openBooking, car])
+    if (car.available) openBooking(car, '', '', !!user)
+  }, [openBooking, car, user])
 
   const variants = {
     enter: (dir) => ({ opacity: 0, x: dir > 0 ? 50 : -50, scale: 0.98 }),

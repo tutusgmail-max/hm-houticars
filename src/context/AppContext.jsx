@@ -27,8 +27,6 @@
  *    but also capped concurrent toasts at 5 to prevent UI overflow.
  */
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { authGetSession } from '../services/auth.service'
-
 const AppContext = createContext(null)
 
 // BUG FIX: Use same key as BookingModal so pending booking survives
@@ -76,28 +74,11 @@ export function AppProvider({ children }) {
     } catch {}
   }, [])
 
-  /**
-   * BUG FIX: Accept optional isAuthenticated to avoid redundant authGetSession call.
-   * Callers that know auth state (e.g. CarCard which has useAuth) pass it directly.
-   * Falls back to async session check when not provided (backward compat).
-   */
-  const openBooking = useCallback(async (car, prefStart = '', prefEnd = '', isAuthenticated = null) => {
-    let authenticated = isAuthenticated
-
-    if (authenticated === null) {
-      try {
-        const session = await authGetSession()
-        authenticated = !!(session?.user)
-      } catch {
-        authenticated = false
-      }
-    }
-
-    // Guest-first: open booking immediately; account only required to confirm
-    if (!authenticated) {
+  /** Guest-first booking — no auth API call on open; pass isAuthenticated from useAuth() */
+  const openBooking = useCallback((car, prefStart = '', prefEnd = '', isAuthenticated = false) => {
+    if (!isAuthenticated) {
       savePendingBooking(car, prefStart, prefEnd)
     }
-
     setBookingModal({ car, prefStart, prefEnd })
   }, [savePendingBooking])
 

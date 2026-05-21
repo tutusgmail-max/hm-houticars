@@ -19,12 +19,11 @@ import { useApp } from '../../context/AppContext'
 import { authSignIn, authSignUp, authForgotPassword } from '../../services/auth.service'
 import {
   validateLoginForm,
-  validateSignupFormSimple,
+  validateSignupFormMinimal,
   validateForgotForm,
   hasErrors,
   parseAuthError,
 } from '../../utils/validation'
-import { getAuthCooldownRemaining, getRateLimitWaitMs, isAuthRateLimited } from '../../utils/authRequestGuard'
 import PasswordInput from '../auth/PasswordInput'
 
 const MODES = { login: 'login', signup: 'signup', forgot: 'forgot', sent: 'sent' }
@@ -97,8 +96,6 @@ export default function AuthModal() {
   const [errors, setErrors] = useState({})
   const [form, setForm] = useState(emptyForm)
   const [sentEmail, setSentEmail] = useState('')
-  const [cooldownUntil, setCooldownUntil] = useState(0)
-  const [cooldownTick, setCooldownTick] = useState(0)
 
   const firstInputRef = useRef(null)
   const submitLockRef = useRef(false)
@@ -107,23 +104,13 @@ export default function AuthModal() {
     if (authModal) setTimeout(() => firstInputRef.current?.focus(), 150)
   }, [authModal, mode])
 
-  useEffect(() => {
-    if (!cooldownUntil || Date.now() >= cooldownUntil) return undefined
-    const id = setInterval(() => setCooldownTick((t) => t + 1), 1000)
-    return () => clearInterval(id)
-  }, [cooldownUntil, cooldownTick])
-
   const switchMode = useCallback((next) => {
     setMode(next)
     setErrors({})
     setForm(emptyForm)
   }, [])
 
-  const cooldownRemainingSec = cooldownUntil > Date.now()
-    ? Math.ceil((cooldownUntil - Date.now()) / 1000)
-    : 0
-  const isCooldown = cooldownRemainingSec > 0
-  const isSubmitDisabled = loading || isCooldown
+  const isSubmitDisabled = loading
 
   if (!authModal) return null
 
@@ -134,21 +121,14 @@ export default function AuthModal() {
 
   const handleSubmit = async (e) => {
     e?.preventDefault?.()
-    if (submitLockRef.current || loading || isCooldown) return
+    if (submitLockRef.current || loading) return
 
     let errs = {}
     if (mode === MODES.login)  errs = validateLoginForm(form)
-    if (mode === MODES.signup) errs = validateSignupFormSimple(form)
+    if (mode === MODES.signup) errs = validateSignupFormMinimal(form)
     if (mode === MODES.forgot) errs = validateForgotForm(form)
 
     if (hasErrors(errs)) { setErrors(errs); return }
-
-    const actionKey = mode === MODES.login ? 'signIn' : mode === MODES.signup ? 'signUp' : 'forgotPassword'
-    const clientWait = getAuthCooldownRemaining(actionKey)
-    if (clientWait > 0) {
-      setErrors({ form: parseAuthError({ code: 'AUTH_COOLDOWN', waitMs: clientWait }) })
-      return
-    }
 
     submitLockRef.current = true
     setLoading(true)
@@ -161,7 +141,7 @@ export default function AuthModal() {
         closeAuth()
       } else if (mode === MODES.signup) {
         await authSignUp({ email: form.email, password: form.password, fullName: form.fullName, phone: form.phone })
-        addToast('🎉 Compte créé avec succès ! Bienvenue chez HM Houti Cars.')
+        addToast('Compte créé — bienvenue chez HM Houti Cars !')
         closeAuth()
       } else if (mode === MODES.forgot) {
         await authForgotPassword(form.email)
@@ -171,11 +151,6 @@ export default function AuthModal() {
     } catch (err) {
       const friendly = parseAuthError(err)
       setErrors({ form: friendly })
-
-      if (isAuthRateLimited(err)) {
-        const waitMs = getRateLimitWaitMs(err) || 60_000
-        setCooldownUntil(Date.now() + waitMs)
-      }
 
       const alreadyUsed = (err?.message || '').toLowerCase().includes('already')
       if (alreadyUsed && mode === MODES.signup) {
@@ -192,19 +167,19 @@ export default function AuthModal() {
   }
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !isSubmitDisabled) handleSubmit(e)
+    if (e.key === 'Enter' && !loading) handleSubmit(e)
   }
 
   const titles = {
-    login:  'Bon retour',
-    signup: 'Créer un compte',
+    login:  'Connexion',
+    signup: 'Compte gratuit',
     forgot: 'Mot de passe oublié',
     sent:   'Email envoyé',
   }
   const subtitles = {
-    login:  'Accédez à votre espace client premium.',
-    signup: 'Inscription rapide — aucune confirmation email requise.',
-    forgot: 'Recevez un lien de réinitialisation instantanément.',
+    login:  'Email + mot de passe — accès immédiat.',
+    signup: '30 secondes — email et mot de passe suffisent.',
+    forgot: 'Lien de réinitialisation par email.',
     sent:   null,
   }
 
@@ -306,11 +281,6 @@ export default function AuthModal() {
                 style={{ border: '1px solid rgba(251,191,36,0.25)', background: 'rgba(251,191,36,0.08)' }}
               >
                 {errors.form}
-                {isCooldown && (
-                  <span className="block mt-1 text-white/50">
-                    Réessayez dans {cooldownRemainingSec}s
-                  </span>
-                )}
               </motion.div>
             )}
 
@@ -346,40 +316,11 @@ export default function AuthModal() {
                   </div>
                 )}
 
-                {/* Signup fields */}
-                {mode === MODES.signup && (
-                  <>
-                    <PremiumField label="Nom complet" error={errors.fullName} icon={FiUser} delay={0.05}>
-                      <PremiumInput
-                        inputRef={firstInputRef}
-                        type="text"
-                        placeholder="Mohammed Alami"
-                        value={form.fullName}
-                        onChange={upd('fullName')}
-                        autoComplete="name"
-                        error={errors.fullName}
-                        icon
-                      />
-                    </PremiumField>
-                    <PremiumField label="Téléphone" error={errors.phone} icon={FiPhone} delay={0.08}>
-                      <PremiumInput
-                        type="tel"
-                        placeholder="+212 6XX XXX XXX"
-                        value={form.phone}
-                        onChange={upd('phone')}
-                        autoComplete="tel"
-                        error={errors.phone}
-                        icon
-                      />
-                    </PremiumField>
-                  </>
-                )}
-
                 {/* Email field */}
                 {mode !== MODES.sent && (
-                  <PremiumField label="Email" error={errors.email} icon={FiMail} delay={mode === MODES.login ? 0.05 : 0.11}>
+                  <PremiumField label="Email" error={errors.email} icon={FiMail} delay={0.05}>
                     <PremiumInput
-                      inputRef={mode !== MODES.signup ? firstInputRef : undefined}
+                      inputRef={firstInputRef}
                       type="email"
                       placeholder="votre@email.com"
                       value={form.email}
@@ -394,14 +335,48 @@ export default function AuthModal() {
 
                 {/* Password */}
                 {(mode === MODES.login || mode === MODES.signup) && (
-                  <PremiumField label="Mot de passe" error={errors.password} icon={FiLock} delay={mode === MODES.login ? 0.08 : 0.14}>
+                  <PremiumField
+                    label={mode === MODES.signup ? 'Mot de passe (6+ caractères)' : 'Mot de passe'}
+                    error={errors.password}
+                    icon={FiLock}
+                    delay={0.08}
+                  >
                     <PasswordInput
                       value={form.password}
                       onChange={upd('password')}
                       onKeyDown={handleKeyDown}
+                      autoComplete={mode === MODES.signup ? 'new-password' : 'current-password'}
                       className={errors.password ? 'border-red-400/50' : ''}
                     />
                   </PremiumField>
+                )}
+
+                {/* Signup optional fields — collected at booking if skipped */}
+                {mode === MODES.signup && (
+                  <>
+                    <PremiumField label="Nom (optionnel)" error={errors.fullName} icon={FiUser} delay={0.11}>
+                      <PremiumInput
+                        type="text"
+                        placeholder="Pour la réservation"
+                        value={form.fullName}
+                        onChange={upd('fullName')}
+                        autoComplete="name"
+                        error={errors.fullName}
+                        icon
+                      />
+                    </PremiumField>
+                    <PremiumField label="WhatsApp (optionnel)" error={errors.phone} icon={FiPhone} delay={0.14}>
+                      <PremiumInput
+                        type="tel"
+                        placeholder="+212 6XX XXX XXX"
+                        value={form.phone}
+                        onChange={upd('phone')}
+                        autoComplete="tel"
+                        error={errors.phone}
+                        icon
+                      />
+                    </PremiumField>
+                  </>
                 )}
 
                 {/* Forgot link */}
@@ -434,17 +409,13 @@ export default function AuthModal() {
                     {loading ? (
                       <>
                         <span className="w-4 h-4 border-2 border-navy/30 border-t-navy rounded-full animate-spin" />
-                        <span>Chargement...</span>
-                      </>
-                    ) : isCooldown ? (
-                      <>
-                        <span>Patientez {cooldownRemainingSec}s</span>
+                        <span>Un instant...</span>
                       </>
                     ) : (
                       <>
                         <span>
                           {mode === MODES.login && 'Se connecter'}
-                          {mode === MODES.signup && 'Créer mon compte'}
+                          {mode === MODES.signup && 'Créer mon compte — gratuit'}
                           {mode === MODES.forgot && 'Envoyer le lien'}
                         </span>
                         <FiArrowRight size={14} />

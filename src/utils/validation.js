@@ -16,6 +16,11 @@ export function validatePassword(password) {
   return password.length >= 8
 }
 
+/** Signup minimum — matches Supabase default (6) for low friction */
+export function validatePasswordSignup(password) {
+  return (password || '').length >= 6
+}
+
 export function validateLoginForm({ email, password }) {
   const errors = {}
   if (!validateEmail(email)) errors.email = 'Adresse email invalide'
@@ -40,6 +45,16 @@ export function validateSignupFormSimple({ fullName, phone, email, password }) {
   if (!validatePhone(phone || '')) errors.phone = 'Numéro de téléphone invalide (ex: +212 6XX XXX XXX)'
   if (!validateEmail(email || '')) errors.email = 'Adresse email invalide'
   if (!validatePassword(password || '')) errors.password = 'Minimum 8 caractères requis'
+  return errors
+}
+
+/** Ultra-low friction — email + password only; name/phone optional */
+export function validateSignupFormMinimal({ fullName, phone, email, password }) {
+  const errors = {}
+  if (!validateEmail(email || '')) errors.email = 'Email invalide'
+  if (!validatePasswordSignup(password)) errors.password = 'Minimum 6 caractères'
+  if (fullName?.trim() && fullName.trim().length < 2) errors.fullName = 'Nom trop court'
+  if (phone?.trim() && !validatePhone(phone)) errors.phone = 'Numéro invalide'
   return errors
 }
 
@@ -69,27 +84,22 @@ export function hasErrors(errors) {
 
 /** Map Supabase error messages → user-friendly French text */
 export function parseAuthError(err) {
-  if (err?.code === 'AUTH_COOLDOWN') {
-    const sec = Math.ceil((err.waitMs || 1500) / 1000)
-    return `Un instant… Réessayez dans ${sec} seconde${sec > 1 ? 's' : ''}.`
-  }
-
   const msg = (err?.message || err?.error_description || '').toLowerCase()
 
   if (msg.includes('invalid login credentials') || msg.includes('invalid_credentials')) {
-    return 'Email ou mot de passe incorrect. Vérifiez vos identifiants.'
+    return 'Email ou mot de passe incorrect.'
   }
   if (msg.includes('already registered') || msg.includes('already been registered') || msg.includes('user already registered')) {
-    return 'Cet email est déjà utilisé. Connectez-vous avec ce compte.'
+    return 'Cet email existe déjà — connectez-vous en un clic.'
   }
   if (msg.includes('email not confirmed')) {
-    return 'Compte trouvé — reconnectez-vous pour continuer.'
+    return 'Connectez-vous pour continuer (aucune confirmation email requise).'
   }
   if (msg.includes('password should be') || msg.includes('password is too weak')) {
-    return 'Choisissez un mot de passe d’au moins 8 caractères.'
+    return 'Mot de passe : 6 caractères minimum.'
   }
   if (isAuthRateLimited(err)) {
-    return 'Beaucoup de demandes en peu de temps. Patientez 1 à 2 minutes, puis réessayez une seule fois.'
+    return 'Petite pause côté serveur — attendez 20–30 secondes et réessayez une fois.'
   }
   if (msg.includes('user not found')) return 'Aucun compte avec cet email. Créez un compte en quelques secondes.'
   if (msg.includes('network') || msg.includes('fetch')) {
