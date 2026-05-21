@@ -193,9 +193,9 @@ export default function AuthModal() {
           return
         }
 
-        logAuthError('signUp.emptyResult', { message: 'no user/session in UI handler' })
-        setErrors({ form: AUTH_MESSAGES.retryLater })
-        addToast(AUTH_MESSAGES.retryLater, 'error')
+        const emptyErr = new Error('signup empty result in UI')
+        emptyErr.code = 'SIGNUP_EMPTY'
+        throw emptyErr
       } else if (submitMode === MODES.forgot) {
         await authForgotPassword(form.email)
         if (generation !== submitGenerationRef.current) return

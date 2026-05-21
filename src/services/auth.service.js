@@ -36,10 +36,12 @@ export function authOnChange(callback) {
   }
 }
 
-async function runTimedAuth(action, emailKey, fn) {
-  return runAuthRequest(action, emailKey, () =>
-    withAuthTimeout(AUTH_TIMEOUT_MS, () => withNetworkRetry(fn)),
-  )
+async function runTimedAuth(action, emailKey, fn, { retryNetwork = true } = {}) {
+  const run = retryNetwork
+    ? () => withAuthTimeout(AUTH_TIMEOUT_MS, () => withNetworkRetry(fn))
+    : () => withAuthTimeout(AUTH_TIMEOUT_MS, fn)
+
+  return runAuthRequest(action, emailKey, run)
 }
 
 export async function authGetSession() {
@@ -86,31 +88,39 @@ export async function authSignUp({ email, password, fullName, phone }) {
         password: pwd,
         options: {
           data: { full_name: displayName, phone: displayPhone },
+          emailRedirectTo: typeof window !== 'undefined' ? `${window.location.origin}/` : undefined,
         },
       })
 
-      if (import.meta.env.DEV) {
-        console.error('[Auth] signUp.response', {
-          config: getSupabasePublicConfig(),
-          error: error ? serializeAuthError(error) : null,
-          hasUser: !!data?.user,
-          hasSession: !!data?.session,
-          identities: data?.user?.identities?.length ?? null,
-        })
+      const snapshot = {
+        config: getSupabasePublicConfig(),
+        error: error ? serializeAuthError(error) : null,
+        hasUser: !!data?.user,
+        hasSession: !!data?.session,
+        identitiesLen: Array.isArray(data?.user?.identities) ? data.user.identities.length : null,
       }
 
-      if (error) throw error
+      if (error) {
+        logAuthError('signUp.apiError', error, snapshot)
+        throw error
+      }
 
       if (!data?.user && !data?.session) {
         const empty = new Error('signup empty response')
         empty.code = 'SIGNUP_EMPTY'
+        logAuthError('signUp.empty', empty, snapshot)
         throw empty
       }
 
       if (data.user && isObfuscatedExistingUser(data.user)) {
         const exists = new Error('User already registered')
         exists.code = 'user_already_exists'
+        logAuthError('signUp.duplicateObfuscated', exists, snapshot)
         throw exists
+      }
+
+      if (import.meta.env.DEV) {
+        console.error('[Auth] signUp.ok', snapshot)
       }
 
       return data
@@ -123,7 +133,7 @@ export async function authSignUp({ email, password, fullName, phone }) {
       logAuthError('signUp', err, { config: getSupabasePublicConfig() })
       throw err
     }
-  })
+  }, { retryNetwork: false })
 }
 
 export async function authSignIn({ email, password }) {

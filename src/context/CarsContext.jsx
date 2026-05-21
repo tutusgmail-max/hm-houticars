@@ -17,6 +17,7 @@
  */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { fetchAvailableCars } from '../services/cars.service'
+import { getSupabasePublicConfig } from '../lib/supabase'
 import { FALLBACK_CARS, getCarById as getFallbackCarById } from '../data'
 
 const CarsContext = createContext(null)
@@ -30,14 +31,24 @@ export function CarsProvider({ children }) {
     setLoading(true)
     setError(null)
     try {
+      const config = getSupabasePublicConfig()
+      if (config.projectRef && config.projectRef !== 'ertdqfavrkomikszagtc') {
+        console.error('[CarsContext] Wrong Supabase project in bundle', config)
+      }
+
       const data = await fetchAvailableCars()
-      // BUG FIX: Use DB data directly. If DB is empty, fall back to static list.
-      // Do NOT override DB price/fuel/img with hardcoded fallback values.
+      // DB is source of truth; static list only when table is empty (not on API errors).
       setCars(data.length > 0 ? data : FALLBACK_CARS)
     } catch (err) {
-      console.warn('[CarsContext]', err?.message)
+      const config = getSupabasePublicConfig()
+      console.error('[CarsContext] fleet load failed — not using static fallback', {
+        projectRef: config.projectRef,
+        refsMatch: config.refsMatch,
+        code: err?.code,
+        message: err?.message,
+      })
       setError(err?.message || 'Impossible de charger la flotte')
-      setCars(FALLBACK_CARS)
+      setCars([])
     } finally {
       setLoading(false)
     }

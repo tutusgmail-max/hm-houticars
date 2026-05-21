@@ -5,6 +5,14 @@
 export function serializeAuthError(err) {
   if (!err) return { message: 'null error' }
 
+  if (typeof err.toJSON === 'function') {
+    try {
+      return { ...err.toJSON(), configReason: err.configReason ?? null }
+    } catch {
+      /* fall through */
+    }
+  }
+
   const status = err.status ?? err.statusCode ?? err?.context?.status ?? null
   const body = err?.context?.body ?? err?.context?.data ?? err?.data ?? err?.error ?? null
 
@@ -13,6 +21,7 @@ export function serializeAuthError(err) {
     code: err.code ?? err.error_code ?? null,
     status,
     name: err.name ?? null,
+    configReason: err.configReason ?? null,
     body: typeof body === 'object' ? body : body ?? null,
   }
 }

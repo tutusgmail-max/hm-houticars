@@ -42,27 +42,30 @@ function getSupabaseProjectRefFromUrl(url) {
   }
 }
 
-const CONFIG_ERROR = 'Une erreur est survenue. Réessayez plus tard.'
+function throwSupabaseConfigError(reason, detail = null) {
+  if (import.meta.env.DEV) {
+    console.error('[Supabase] configuration error:', reason, detail ?? '')
+  }
+  const err = new Error('Supabase configuration invalid')
+  err.code = 'SUPABASE_CONFIG'
+  err.configReason = reason
+  throw err
+}
 
 function assertSupabaseConfig() {
   if (!supabaseUrl || !supabaseAnonKey) {
-    if (import.meta.env.DEV) {
-      console.error('[Supabase] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY')
-    }
-    throw new Error(CONFIG_ERROR)
+    throwSupabaseConfigError('missing_env', { hasUrl: !!supabaseUrl, hasKey: !!supabaseAnonKey })
   }
 
   let parsedUrl
   try {
     parsedUrl = new URL(supabaseUrl)
   } catch {
-    if (import.meta.env.DEV) console.error('[Supabase] Invalid VITE_SUPABASE_URL:', supabaseUrl)
-    throw new Error(CONFIG_ERROR)
+    throwSupabaseConfigError('invalid_url', supabaseUrl)
   }
 
   if (parsedUrl.protocol !== 'https:') {
-    if (import.meta.env.DEV) console.error('[Supabase] URL must use https://', supabaseUrl)
-    throw new Error(CONFIG_ERROR)
+    throwSupabaseConfigError('https_required', supabaseUrl)
   }
 
   const urlRef = getSupabaseProjectRefFromUrl(supabaseUrl)
@@ -70,20 +73,14 @@ function assertSupabaseConfig() {
   const keyRef = jwtPayload?.ref || null
 
   if (!urlRef) {
-    if (import.meta.env.DEV) console.error('[Supabase] URL must be https://<ref>.supabase.co')
-    throw new Error(CONFIG_ERROR)
+    throwSupabaseConfigError('invalid_host', supabaseUrl)
   }
   if (keyRef && keyRef !== urlRef) {
-    if (import.meta.env.DEV) {
-      console.error('[Supabase] URL ref and anon key ref mismatch', { urlRef, keyRef })
-    }
-    throw new Error(CONFIG_ERROR)
+    throwSupabaseConfigError('ref_mismatch', { urlRef, keyRef })
   }
   if (jwtPayload?.role === 'service_role') {
-    if (import.meta.env.DEV) console.error('[Supabase] service_role must not be used in VITE_SUPABASE_ANON_KEY')
-    throw new Error(CONFIG_ERROR)
+    throwSupabaseConfigError('service_role_forbidden')
   }
-
 }
 
 assertSupabaseConfig()

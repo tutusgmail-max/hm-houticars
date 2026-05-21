@@ -8,7 +8,7 @@ export function parseSupabaseError(err) {
   if (!err) return AUTH_MESSAGES.networkError
 
   if (isAuthRateLimited(err)) {
-    return AUTH_MESSAGES.retryLater
+    return AUTH_MESSAGES.rateLimit
   }
 
   const code = err?.code || ''
