@@ -5,7 +5,6 @@ import { useAdminData } from '../../context/AdminDataContext'
 import { resolveDocumentLinks } from '../../services/documentUpload.service'
 import { useApp } from '../../context/AppContext'
 import GlassCard from './ui/GlassCard'
-import { formatReservationDate, reservationCustomerName } from '../../utils/reservationFormat'
 import StatusBadge from './ui/StatusBadge'
 import AdminModal from './ui/AdminModal'
 
@@ -102,20 +101,15 @@ export default function DocumentsCenter() {
       </GlassCard>
 
       <div className="grid gap-4">
-        {filtered.length === 0 && (
-          <GlassCard className="p-8 text-center text-white/35 text-sm">
-            Aucun document de réservation à afficher
-          </GlassCard>
-        )}
         {filtered.map((r) => {
           const complete = DOC_KEYS.every((d) => r[`${d.key}_url`] || r.documents?.[d.key])
           return (
             <GlassCard key={r.id} className="p-5">
               <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
                 <div>
-                  <h3 className="font-bold text-white">{reservationCustomerName(r)}</h3>
+                  <h3 className="font-bold text-white">{r.customer_name || 'Client'}</h3>
                   <p className="text-xs text-white/45">
-                    {r.ref || '—'} · {r.car_name || '—'} · {formatReservationDate(r.created_at?.slice?.(0, 10) || r.created_at)}
+                    {r.ref} · {r.car_name} · {new Date(r.created_at).toLocaleDateString('fr-FR')}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">

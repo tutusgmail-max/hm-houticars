@@ -61,11 +61,6 @@ export default function CustomersManagement() {
       </GlassCard>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {paged.length === 0 && (
-          <GlassCard className="p-8 col-span-full text-center text-white/35 text-sm">
-            Aucun client trouvé
-          </GlassCard>
-        )}
         {paged.map((u) => (
           <GlassCard
             key={u.id}

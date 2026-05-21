@@ -81,7 +81,7 @@ export default function NotificationsBell() {
                   <span className="mt-0.5 text-base shrink-0">{TYPE_ICON[n.type] || '🔔'}</span>
                   <div className="min-w-0 flex-1">
                     <p className={`text-sm font-semibold ${n.read ? 'text-white/50' : 'text-white/90'}`}>
-                      {n.title || 'Notification'}
+                      {n.title}
                     </p>
                     {n.message && (
                       <p className="mt-0.5 text-xs text-white/35 truncate">{n.message}</p>

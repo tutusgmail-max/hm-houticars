@@ -35,13 +35,6 @@ import GlassCard from './ui/GlassCard'
 import StatusBadge from './ui/StatusBadge'
 import AdminModal from './ui/AdminModal'
 import Pagination from './ui/Pagination'
-import {
-  formatMoneyDh,
-  formatReservationDate,
-  reservationCustomerName,
-  reservationCustomerPhone,
-  reservationDateRange,
-} from '../../utils/reservationFormat'
 
 const PAGE_SIZE = 10
 const STATUS_ACTIONS = {
@@ -77,7 +70,7 @@ export default function ReservationManagement() {
         !q ||
         r.ref?.toLowerCase().includes(q) ||
         r.car_name?.toLowerCase().includes(q) ||
-        reservationCustomerName(r).toLowerCase().includes(q)
+        (r.customer_name || r.profiles?.full_name || '').toLowerCase().includes(q)
       const matchS = statusFilter === 'all' || r.status === statusFilter
       return matchQ && matchS
     })
@@ -159,7 +152,7 @@ export default function ReservationManagement() {
   }
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="admin-page">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
       <GlassCard className="p-4 flex flex-wrap gap-3 items-center justify-between">
         <div className="flex flex-wrap gap-3 flex-1">
           <div className="relative flex-1 min-w-[200px]">
@@ -191,34 +184,34 @@ export default function ReservationManagement() {
         </button>
       </GlassCard>
 
-      <GlassCard className="hidden sm:block overflow-hidden">
-        <div className="admin-table-wrap">
-          <table className="admin-table">
+      <GlassCard className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
             <thead>
-              <tr>
-                <th>Réf</th>
-                <th>Client</th>
-                <th className="hidden md:table-cell">Téléphone</th>
-                <th>Véhicule</th>
-                <th className="hidden lg:table-cell">Dates</th>
-                <th>Statut</th>
-                <th className="text-right">Total</th>
-                <th>Actions</th>
+              <tr className="text-left text-[11px] uppercase tracking-wider text-white/40 border-b border-white/10 bg-white/[0.02]">
+                <th className="p-4">Réf</th>
+                <th className="p-4">Client</th>
+                <th className="p-4">Téléphone</th>
+                <th className="p-4">Véhicule</th>
+                <th className="p-4">Dates</th>
+                <th className="p-4">Statut</th>
+                <th className="p-4 text-right">Total</th>
+                <th className="p-4">Actions</th>
               </tr>
             </thead>
             <tbody>
               {paged.map((r) => (
                 <tr key={r.id} className="border-b border-white/5 hover:bg-white/[0.03]">
-                  <td className="font-mono text-[#C9A84C] font-bold text-xs">{r.ref}</td>
-                  <td className="font-medium">{reservationCustomerName(r)}</td>
-                  <td className="hidden md:table-cell text-white/50 text-sm">{reservationCustomerPhone(r)}</td>
-                  <td className="text-sm">{r.car_name || '—'}</td>
-                  <td className="hidden lg:table-cell text-white/45 text-xs whitespace-nowrap">
-                    {reservationDateRange(r)}
+                  <td className="p-4 font-mono text-[#C9A84C]">{r.ref}</td>
+                  <td className="p-4 font-medium">{r.customer_name || r.profiles?.full_name || '—'}</td>
+                  <td className="p-4 text-white/50">{r.customer_phone || r.profiles?.phone || '—'}</td>
+                  <td className="p-4">{r.car_name}</td>
+                  <td className="p-4 text-white/50 text-xs whitespace-nowrap">
+                    {r.start_date} → {r.end_date}
                   </td>
-                  <td><StatusBadge status={r.status} /></td>
-                  <td className="text-right font-bold text-[#C9A84C]">{formatMoneyDh(r.total)}</td>
-                  <td>
+                  <td className="p-4"><StatusBadge status={r.status} /></td>
+                  <td className="p-4 text-right font-bold text-[#C9A84C]">{r.total} DH</td>
+                  <td className="p-4">
                     <div className="flex gap-1 justify-end flex-wrap items-center">
                       <button
                         type="button"
@@ -289,55 +282,6 @@ export default function ReservationManagement() {
         </div>
       </GlassCard>
 
-      <div className="sm:hidden admin-table-card">
-        {paged.length === 0 && (
-          <div className="text-center py-12 text-white/30 text-sm">
-            Aucune réservation trouvée
-          </div>
-        )}
-        {paged.map((r) => (
-          <div key={r.id} className="admin-table-card__item">
-            <div className="flex items-start justify-between gap-3 mb-3">
-              <div className="min-w-0">
-                <p className="font-mono text-[#C9A84C] font-bold text-sm">{r.ref}</p>
-                <p className="font-semibold text-white mt-0.5 truncate">{reservationCustomerName(r)}</p>
-                <p className="text-white/45 text-xs mt-0.5 truncate">{r.car_name || '—'}</p>
-              </div>
-              <div className="flex flex-col items-end gap-2 shrink-0">
-                <StatusBadge status={r.status} />
-                <span className="font-bold text-[#C9A84C] text-sm">{formatMoneyDh(r.total)}</span>
-              </div>
-            </div>
-            <div className="text-xs text-white/40 mb-3">{reservationDateRange(r)}</div>
-            <div className="flex gap-2 flex-wrap pt-3 border-t border-white/10">
-              <button
-                type="button"
-                onClick={() => setDetail(r)}
-                className="admin-btn admin-btn--ghost text-xs px-3 py-2 min-h-0 gap-1.5"
-              >
-                <Eye size={14} /> Détails
-              </button>
-              {(STATUS_ACTIONS[r.status] || []).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => handleStatus(r.id, s)}
-                  disabled={!!actionLoading[r.id]}
-                  className={`admin-btn text-xs px-3 py-2 min-h-0 gap-1.5 disabled:opacity-50 ${
-                    s === 'cancelled'
-                      ? 'bg-red-500/15 text-red-300 border-red-500/25'
-                      : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/25'
-                  }`}
-                >
-                  {s === 'cancelled' ? <X size={14} /> : <Check size={14} />}
-                  {STATUS_STYLES[s]?.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-
       <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
 
       <AdminModal open={!!detail} onClose={() => setDetail(null)} title="Détail réservation" wide>
@@ -346,13 +290,13 @@ export default function ReservationManagement() {
             <div className="grid sm:grid-cols-2 gap-3">
               {[
                 ['Référence',  detail.ref],
-                ['Client',     reservationCustomerName(detail)],
-                ['Téléphone',  reservationCustomerPhone(detail)],
-                ['Email',      detail.customer_email || detail.profiles?.email || '—'],
-                ['Véhicule',   detail.car_name || '—'],
-                ['Départ',     `${detail.pickup_location} — ${formatReservationDate(detail.start_date)}`],
-                ['Retour',     `${detail.return_location} — ${formatReservationDate(detail.end_date)}`],
-                ['Total',      formatMoneyDh(detail.total)],
+                ['Client',     detail.customer_name || detail.profiles?.full_name],
+                ['Téléphone',  detail.customer_phone || detail.profiles?.phone],
+                ['Email',      detail.customer_email || detail.profiles?.email],
+                ['Véhicule',   detail.car_name],
+                ['Départ',     `${detail.pickup_location} — ${detail.start_date}`],
+                ['Retour',     `${detail.return_location} — ${detail.end_date}`],
+                ['Total',      `${detail.total} DH`],
                 ['Statut',     STATUS_STYLES[detail.status]?.label],
                 ['Notes',      detail.notes],
               ].filter(([, v]) => v).map(([k, v]) => (

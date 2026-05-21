@@ -1,156 +1,121 @@
 import React, { useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { FaWhatsapp } from 'react-icons/fa'
-import { FiMapPin, FiShield, FiClock } from 'react-icons/fi'
 import { useApp } from '../context/AppContext'
 import { HERO_STATS } from '../data'
 
-const BG_IMAGE = 'https://ertdqfavrkomikszagtc.supabase.co/storage/v1/object/public/image/interface%20houticars.png'
-
-const fadeUp = (delay = 0) => ({
-  initial: { opacity: 0, y: 40 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.8, delay, ease: [0.16, 1, 0.3, 1] },
-})
-
-const fadeIn = (delay = 0) => ({
-  initial: { opacity: 0 },
-  animate: { opacity: 1 },
-  transition: { duration: 0.6, delay },
-})
-
-const TRUST_PILLS = [
-  { icon: <FiMapPin size={11} />, text: 'Oujda · Nador · Berkane' },
-  { icon: <FiShield size={11} />, text: 'Assurance Tous Risques' },
-  { icon: <FiClock size={11} />, text: 'Disponible 24h/24' },
-]
-
 export default function Hero() {
   const { scrollTo } = useApp()
-  const parallaxRef = useRef(null)
-
-  useEffect(() => {
-    const handleScroll = () => {
-      if (!parallaxRef.current) return
-      const y = window.scrollY * 0.25
-      parallaxRef.current.style.transform = `translate3d(0, ${y}px, 0) scale(1.08)`
-    }
-    window.addEventListener('scroll', handleScroll, { passive: true })
-    return () => window.removeEventListener('scroll', handleScroll)
-  }, [])
 
   return (
     <section
       id="home"
-      className="relative min-h-screen flex items-center overflow-hidden"
-      aria-label="Location voiture luxe Oujda Nador Berkane"
-      style={{ paddingTop: 124, paddingBottom: 96 }}
+      className="min-h-screen flex items-center relative overflow-hidden"
+      style={{
+        background: 'linear-gradient(110deg, rgba(8,14,24,0.99) 0%, rgba(8,14,24,0.88) 45%, rgba(8,14,24,0.4) 100%), linear-gradient(to top, rgba(8,14,24,1) 0%, rgba(8,14,24,0.2) 55%, transparent 100%), url("https://ertdqfavrkomikszagtc.supabase.co/storage/v1/object/public/image/interface%20houticars.png") center 30% / cover no-repeat',
+        paddingTop: '130px',
+        paddingBottom: '100px',
+        paddingLeft: 'clamp(1rem, 5vw, 4rem)',
+        paddingRight: 'clamp(1rem, 5vw, 4rem)',
+      }}
     >
-      {/* Parallax BG */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div
-          ref={parallaxRef}
-          className="absolute inset-[-8%] bg-center bg-cover will-change-transform"
-          style={{ backgroundImage: `url(${BG_IMAGE})`, backgroundPosition: 'center 30%' }}
-        />
-        {/* Dark overlays */}
-        <div className="absolute inset-0" style={{ background: 'linear-gradient(100deg, rgba(8,14,24,0.97) 0%, rgba(8,14,24,0.85) 45%, rgba(8,14,24,0.35) 100%)' }} />
-        <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(8,14,24,0.98) 0%, rgba(8,14,24,0.2) 55%, transparent 100%)' }} />
+      {/* Ambient glow */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-[15%] left-[55%] w-[700px] h-[700px] rounded-full opacity-[0.07]" style={{ background: 'radial-gradient(circle, #C9A84C, transparent 70%)', filter: 'blur(60px)' }} />
+        <div className="absolute bottom-0 left-0 w-[500px] h-[400px] opacity-[0.06]" style={{ background: 'radial-gradient(circle, #1a3a6e, transparent 70%)', filter: 'blur(60px)' }} />
       </div>
 
-      {/* Ambient glow */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.8 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 2, ease: 'easeOut' }}
-        className="absolute left-[58%] top-[20%] w-[700px] h-[700px] rounded-full pointer-events-none"
-        style={{ background: 'radial-gradient(circle, rgba(201,168,76,0.09) 0%, transparent 65%)', transform: 'translate(-50%, -50%)' }}
-      />
+      {/* Grid overlay */}
+      <div className="absolute inset-0 pointer-events-none opacity-[0.025]" style={{ backgroundImage: 'linear-gradient(rgba(201,168,76,0.5) 1px,transparent 1px),linear-gradient(90deg,rgba(201,168,76,0.5) 1px,transparent 1px)', backgroundSize: '90px 90px', maskImage: 'linear-gradient(to right, transparent 0%, black 20%, black 80%, transparent 100%)' }} />
 
-      {/* Gold grid */}
-      <div className="absolute inset-0 opacity-[0.035] pointer-events-none" style={{ backgroundImage: 'linear-gradient(rgba(201,168,76,.5) 1px,transparent 1px),linear-gradient(90deg,rgba(201,168,76,.5) 1px,transparent 1px)', backgroundSize: '90px 90px', maskImage: 'linear-gradient(to right, transparent 0%, black 20%, black 80%, transparent 100%)' }} />
+      {/* Bottom border */}
+      <div className="absolute bottom-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(to right, transparent, rgba(201,168,76,0.2), transparent)' }} />
 
-      {/* Bottom separator */}
-      <div className="absolute bottom-0 left-0 right-0 h-px pointer-events-none" style={{ background: 'linear-gradient(to right, transparent, rgba(201,168,76,0.2), transparent)' }} />
+      <div className="max-w-[1400px] mx-auto w-full relative z-10">
+        <div className="max-w-[920px]">
 
-      {/* Content */}
-      <div className="max-w-[1360px] mx-auto w-full px-4 sm:px-10 relative z-10">
-        <div className="max-w-[900px]">
-
-          {/* Location badge */}
-          <motion.div {...fadeIn(0.1)} className="mb-6 flex flex-wrap gap-2">
-            {TRUST_PILLS.map((p) => (
-              <span
-                key={p.text}
-                className="inline-flex items-center gap-2 text-[11px] font-bold tracking-[2px] uppercase px-4 py-1.5 rounded-full backdrop-blur-md"
-                style={{ background: 'rgba(201,168,76,0.07)', border: '1px solid rgba(201,168,76,0.25)', color: '#C9A84C' }}
-              >
-                {p.icon}
-                {p.text}
-              </span>
-            ))}
+          {/* Badge */}
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: 'easeOut' }}
+            className="mb-8"
+          >
+            <span className="inline-flex items-center gap-2.5 text-[11px] font-bold tracking-[3px] uppercase px-5 py-2.5 rounded-full" style={{ background: 'rgba(201,168,76,0.07)', border: '1px solid rgba(201,168,76,0.25)', color: '#C9A84C' }}>
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse2" style={{ background: '#C9A84C' }} />
+              Location Premium · Oujda · Nador · Berkane
+            </span>
           </motion.div>
 
-          {/* Main heading — SEO H1 */}
+          {/* Headline */}
           <motion.h1
-            {...fadeUp(0.2)}
-            className="font-display font-bold text-white mb-7 tracking-[-0.04em]"
-            style={{ fontSize: 'clamp(3.6rem, 8.5vw, 8.2rem)', lineHeight: 0.88 }}
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.9, delay: 0.15, ease: [0.16,1,0.3,1] }}
+            className="font-display text-white mb-8"
+            style={{ fontSize: 'clamp(4.2rem, 10vw, 9.5rem)', lineHeight: 0.86, fontWeight: 800, letterSpacing: '-0.03em' }}
           >
             L'Excellence<br />
-            <em style={{ background: 'linear-gradient(135deg, #C9A84C 0%, #E8C76A 40%, #fff6d6 80%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+            <em style={{ background: 'linear-gradient(135deg, #C9A84C 0%, #E8C76A 40%, #fff8e0 70%, #C9A84C 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontStyle: 'italic' }}>
               Automobile
             </em>
-            <br />à Votre Service
+            <br />
+            <span style={{ fontSize: '0.62em', fontWeight: 600, color: 'rgba(255,255,255,0.55)' }}>à Votre Service</span>
           </motion.h1>
 
-          {/* Subheading — SEO-rich */}
+          {/* Subtext */}
           <motion.p
-            {...fadeUp(0.35)}
-            style={{ color: 'rgba(255,255,255,0.55)', fontSize: 17, lineHeight: 1.95, marginBottom: 46, maxWidth: 580 }}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.35, ease: 'easeOut' }}
+            style={{ color: 'rgba(255,255,255,0.5)', fontSize: 17, lineHeight: 1.95, marginBottom: 52, maxWidth: 520, fontWeight: 300 }}
           >
-            Location de voiture de prestige à <strong style={{ color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>Oujda, Nador et Berkane</strong>.
-            Véhicules 2024–2025, livraison à domicile, assurance tous risques.
-            Une expérience, pas juste une location.
+            Des véhicules haut de gamme, une réservation fluide et une livraison précise dans toute la région orientale. Une expérience, pas juste une location.
           </motion.p>
 
-          {/* CTAs */}
-          <motion.div {...fadeUp(0.5)} className="flex gap-4 flex-wrap">
+          {/* CTA Buttons */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.5 }}
+            className="flex gap-4 flex-wrap mb-20"
+          >
             <button
               onClick={() => scrollTo('cars')}
-              className="btn-gold text-[13px] px-11 py-4"
-              style={{ boxShadow: '0 20px 55px rgba(201,168,76,0.28), 0 0 0 1px rgba(201,168,76,0.15)' }}
-              aria-label="Voir la flotte de voitures"
+              className="btn-gold text-[12px] px-10 py-4"
+              style={{ boxShadow: '0 20px 50px rgba(201,168,76,0.28)' }}
             >
               Découvrir la Flotte →
             </button>
             <a
               href="https://wa.me/212611460900"
               target="_blank"
-              rel="noreferrer noopener"
-              className="btn-ghost flex items-center gap-2 text-[13px] px-9 py-4 no-underline"
-              aria-label="Contacter HM Houti Cars sur WhatsApp"
+              rel="noreferrer"
+              className="btn-ghost text-[12px] px-9 py-4 no-underline"
             >
-              <FaWhatsapp style={{ color: '#25D366' }} size={16} />
-              WhatsApp Direct
+              <FaWhatsapp size={16} style={{ color: '#25D366' }} />
+              WhatsApp
             </a>
           </motion.div>
 
           {/* Stats */}
           <motion.div
-            {...fadeUp(0.65)}
-            className="flex gap-8 mt-16 pt-10 flex-wrap max-w-[720px]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.8, delay: 0.7 }}
+            className="flex gap-10 pt-10 flex-wrap"
             style={{ borderTop: '1px solid rgba(201,168,76,0.12)' }}
           >
-            {HERO_STATS.map(({ num, label }) => (
-              <div key={label} className="relative">
-                <div className="font-condensed font-black text-[2.1rem] leading-none" style={{ color: '#C9A84C' }}>
-                  {num}
-                </div>
-                <div className="text-[10px] font-semibold uppercase tracking-[1.8px] mt-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                  {label}
-                </div>
-              </div>
+            {HERO_STATS.map(({ num, label }, i) => (
+              <motion.div
+                key={label}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.75 + i * 0.1 }}
+              >
+                <div className="font-condensed font-black leading-none mb-1" style={{ fontSize: '2.4rem', color: '#C9A84C' }}>{num}</div>
+                <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '2px', textTransform: 'uppercase', color: 'rgba(255,255,255,0.28)' }}>{label}</div>
+              </motion.div>
             ))}
           </motion.div>
         </div>
@@ -160,18 +125,12 @@ export default function Hero() {
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 1.5 }}
-        className="absolute bottom-8 left-1/2 -translate-x-1/2 hidden sm:flex flex-col items-center gap-2"
-        style={{ color: 'rgba(255,255,255,0.2)' }}
-        aria-hidden="true"
+        transition={{ delay: 1.4 }}
+        className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5"
+        style={{ color: 'rgba(255,255,255,0.2)', fontSize: 10, letterSpacing: 3, fontWeight: 600, textTransform: 'uppercase' }}
       >
-        <span className="text-[9px] font-bold tracking-[2.5px] uppercase">Défiler</span>
-        <motion.div
-          animate={{ y: [0, 6, 0] }}
-          transition={{ repeat: Infinity, duration: 1.8, ease: 'easeInOut' }}
-          className="w-px h-8"
-          style={{ background: 'linear-gradient(to bottom, rgba(201,168,76,0.5), transparent)' }}
-        />
+        <div className="w-px h-10" style={{ background: 'linear-gradient(to bottom, rgba(201,168,76,0.4), transparent)' }} />
+        <span>Défiler</span>
       </motion.div>
     </section>
   )

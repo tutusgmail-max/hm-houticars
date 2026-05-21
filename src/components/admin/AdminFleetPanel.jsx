@@ -7,7 +7,6 @@ import {
   updateCar,
   deleteCar,
   uploadCarImages,
-  getCarDisplayImage,
 } from '../../services/cars.service'
 import { useApp } from '../../context/AppContext'
 import { useCars } from '../../context/CarsContext'
@@ -110,7 +109,7 @@ export default function AdminFleetPanel() {
               className="bg-white rounded-2xl border border-black/[0.06] overflow-hidden shadow-sm hover:shadow-lg transition-shadow"
             >
               <div className="h-40 bg-[#f0f2f5] flex items-center justify-center p-2">
-                <LazyImage src={getCarDisplayImage(car)} alt={car.name} className="h-full w-full" />
+                <LazyImage src={car.img} alt={car.name} className="h-full w-full" />
               </div>
               <div className="p-5">
                 <div className="flex items-start justify-between gap-2">

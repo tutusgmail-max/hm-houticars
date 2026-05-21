@@ -243,8 +243,8 @@ export default function AvailabilityCalendar() {
                             <StatusBadge status={r.status} />
                           </div>
                           <p className="text-white font-semibold text-sm">{r.car_name}</p>
-                          <p className="text-white/50 text-xs mt-1">{r.customer_name || r.profiles?.full_name || '—'}</p>
-                          <p className="text-white/35 text-xs break-words">{r.start_date || '—'} → {r.end_date || '—'}</p>
+                          <p className="text-white/50 text-xs mt-1">{r.customer_name || '—'}</p>
+                          <p className="text-white/35 text-xs">{r.start_date} → {r.end_date}</p>
                         </div>
                       ))}
                     </div>

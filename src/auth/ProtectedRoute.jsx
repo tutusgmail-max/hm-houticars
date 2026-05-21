@@ -42,9 +42,8 @@ export default function ProtectedRoute({ children, adminOnly = false }) {
     if (authLoading) return
     if (!user) return
     if (isAdmin) return
-    // Try to reload profile once; AuthContext has its own inflight guard.
-    loadProfile?.(user)
-  }, [adminOnly, authLoading, user, isAdmin, loadProfile])
+    loadProfile?.(user, { force: true })
+  }, [adminOnly, authLoading, user, isAdmin, loadProfile, user?.user_metadata?.role])
 
   // If profile fetch fails transiently, retry a couple of times then fail closed.
   useEffect(() => {

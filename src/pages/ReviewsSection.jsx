@@ -1,112 +1,63 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { motion } from 'framer-motion'
 import { REVIEWS } from '../data'
 
 function Stars({ n }) {
   return (
-    <div className="flex items-center gap-0.5 mb-3" aria-label={`${n} étoiles sur 5`} role="img">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <svg key={i} width="13" height="13" viewBox="0 0 12 12" fill={i < n ? '#C9A84C' : 'rgba(138,149,165,0.3)'}>
-          <path d="M6 1l1.29 2.61 2.88.42-2.09 2.03.49 2.87L6 7.54 3.43 8.93l.49-2.87L1.83 4.03l2.88-.42z"/>
-        </svg>
+    <div className="flex gap-0.5 mb-4">
+      {[...Array(5)].map((_, i) => (
+        <span key={i} style={{ color: i < n ? '#C9A84C' : 'rgba(255,255,255,0.12)', fontSize: 14 }}>★</span>
       ))}
     </div>
   )
 }
 
 export default function ReviewsSection() {
-  const avgRating = (REVIEWS.reduce((s, r) => s + r.stars, 0) / REVIEWS.length).toFixed(1)
-
   return (
-    <section
-      id="reviews"
-      className="luxury-section-line relative overflow-hidden bg-[#080E18] px-4 py-28 sm:px-10"
-      aria-label="Avis clients HM Houti Cars"
-      itemScope
-      itemType="https://schema.org/Product"
-    >
-      {/* Hidden schema data */}
-      <meta itemProp="name" content="HM Houti Cars – Location Voiture Oujda" />
-      <div itemProp="aggregateRating" itemScope itemType="https://schema.org/AggregateRating">
-        <meta itemProp="ratingValue" content={avgRating} />
-        <meta itemProp="reviewCount" content={String(REVIEWS.length)} />
-        <meta itemProp="bestRating" content="5" />
-      </div>
+    <section id="reviews" className="luxury-section-line relative overflow-hidden px-4 py-28 sm:px-10" style={{ background: '#080E18' }}>
+      {/* Background accent */}
+      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 60% 40% at 50% 100%, rgba(201,168,76,0.04) 0%, transparent 70%)' }} />
 
-      <div className="mx-auto max-w-[1360px]">
-        {/* Header */}
-        <div className="mb-14 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+      <div className="mx-auto max-w-[1400px] relative">
+        <div className="mb-14 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
           <div>
-            <div className="mb-5 flex items-center gap-3 font-condensed text-[11px] font-bold uppercase tracking-[3px] text-gold before:block before:h-px before:w-6 before:bg-gold">
-              Témoignages Vérifiés
-            </div>
-            <h2 className="font-display text-[clamp(2.2rem,4vw,4rem)] font-bold leading-[0.95] text-white">
-              Ce Que Disent<br /><em className="text-gold">Nos Clients</em>
-            </h2>
+            <span className="section-label mb-4 block w-fit">Témoignages</span>
+            <h2 className="section-title">Ce Que Disent<br /><em className="text-yellow-300 not-italic">Nos Clients</em></h2>
           </div>
-
-          {/* Aggregate rating widget */}
-          <div className="flex items-center gap-5 px-6 py-4 rounded" style={{ background: 'rgba(201,168,76,0.06)', border: '1px solid rgba(201,168,76,0.15)' }}>
-            <div className="text-center">
-              <div className="font-condensed font-black text-[3rem] leading-none text-gold">{avgRating}</div>
-              <Stars n={Math.round(parseFloat(avgRating))} />
-              <div className="text-[10px] text-white/30 uppercase tracking-[1.5px] font-bold">{REVIEWS.length} Avis</div>
-            </div>
-            <div className="w-px h-16 bg-gold/15" />
-            <div className="flex flex-col gap-1.5">
-              {[5,4,3].map((star) => {
-                const count = REVIEWS.filter(r => r.stars === star).length
-                const pct = Math.round((count / REVIEWS.length) * 100)
-                return (
-                  <div key={star} className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-white/30 w-2">{star}</span>
-                    <div className="w-20 h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
-                      <div className="h-full rounded-full" style={{ width: `${pct}%`, background: '#C9A84C' }} />
-                    </div>
-                    <span className="text-[10px] text-white/25">{pct}%</span>
-                  </div>
-                )
-              })}
-            </div>
+          <div className="flex items-center gap-6">
+            {[['4.9/5', 'Note moyenne'], ['500+', 'Avis clients'], ['98%', 'Satisfaction']].map(([val, label]) => (
+              <div key={label} className="text-center">
+                <div className="font-condensed font-bold" style={{ fontSize: '2rem', color: '#C9A84C' }}>{val}</div>
+                <div className="text-[11px] font-medium uppercase tracking-[1.5px]" style={{ color: 'rgba(255,255,255,0.3)' }}>{label}</div>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Reviews grid */}
-        <div className="grid grid-cols-1 gap-px sm:grid-cols-2 lg:grid-cols-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {REVIEWS.map((review, i) => (
             <motion.div
               key={`${review.name}-${i}`}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 24 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '-20px' }}
-              transition={{ duration: 0.5, delay: i * 0.07 }}
-              className="relative p-8 transition-all duration-300"
-              style={{ background: '#080E18' }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(201,168,76,0.03)' }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = '#080E18' }}
-              itemScope
-              itemType="https://schema.org/Review"
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: i * 0.08, ease: [0.16,1,0.3,1] }}
+              className="relative p-8 rounded-2xl group"
+              style={{ background: 'rgba(13,26,42,0.55)', border: '1px solid rgba(255,255,255,0.05)', backdropFilter: 'blur(12px)', transition: 'all 0.25s ease' }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(201,168,76,0.15)'; e.currentTarget.style.background = 'rgba(13,26,42,0.75)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)'; e.currentTarget.style.background = 'rgba(13,26,42,0.55)' }}
             >
               {/* Quote mark */}
-              <div className="absolute right-8 top-6 font-display text-[4rem] font-bold leading-none text-gold/[0.06]" aria-hidden="true">"</div>
-
+              <div className="absolute right-7 top-5 font-display font-bold leading-none select-none" style={{ fontSize: '5rem', color: 'rgba(201,168,76,0.06)' }}>"</div>
               <Stars n={review.stars} />
-              <meta itemProp="reviewRating" content={String(review.stars)} />
-
-              <p
-                className="font-display mb-7 text-[1.1rem] italic leading-[1.75] text-white/60"
-                itemProp="reviewBody"
-              >
-                "{review.text}"
-              </p>
-
-              <div className="flex items-center gap-3.5" itemProp="author" itemScope itemType="https://schema.org/Person">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-condensed text-sm font-black text-navy" style={{ background: 'linear-gradient(135deg, #C9A84C, #E8C76A)' }}>
+              <p className="font-display mb-7 text-[1.1rem] italic leading-[1.75]" style={{ color: 'rgba(255,255,255,0.65)' }}>"{review.text}"</p>
+              <div className="flex items-center gap-3.5">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-bold text-sm" style={{ background: 'linear-gradient(135deg, rgba(201,168,76,0.2), rgba(201,168,76,0.08))', border: '1px solid rgba(201,168,76,0.2)', color: '#C9A84C', fontFamily: 'Outfit, sans-serif' }}>
                   {review.name.split(' ').map((w) => w[0]).join('')}
                 </div>
                 <div>
-                  <div className="text-sm font-semibold text-white" itemProp="name">{review.name}</div>
-                  <div className="mt-0.5 text-[11px] text-white/30">{review.city}</div>
+                  <div className="text-[13px] font-semibold text-white" style={{ fontFamily: 'Outfit, sans-serif' }}>{review.name}</div>
+                  <div className="text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.28)' }}>{review.city}</div>
                 </div>
               </div>
             </motion.div>

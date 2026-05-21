@@ -4,6 +4,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { authOnChange, authSignOut } from '../services/auth.service'
 import { fetchProfile } from '../services/profile.service'
+import { isAdminRole, logAdminRoleDebug, resolveEffectiveRole } from '../utils/adminRole'
 import { fetchUserDocuments, parseDocuments } from '../services/documentUpload.service'
 
 const AuthContext = createContext(null)
@@ -42,24 +43,22 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  const loadProfile = useCallback(async (sessionUserOrUserId) => {
+  const loadProfile = useCallback(async (sessionUserOrUserId, { force = false } = {}) => {
+    const sessionUser = typeof sessionUserOrUserId === 'string' ? null : sessionUserOrUserId
     const userId = typeof sessionUserOrUserId === 'string'
       ? sessionUserOrUserId
       : sessionUserOrUserId?.id
 
     if (!userId) return null
 
-    if (profileInflightRef.current.has(userId)) {
+    if (!force && profileInflightRef.current.has(userId)) {
       return profileInflightRef.current.get(userId)
     }
 
     const promise = (async () => {
       setProfileLoading(true)
       try {
-        const data = await fetchProfile(
-          userId,
-          typeof sessionUserOrUserId === 'string' ? null : sessionUserOrUserId,
-        )
+        const data = await fetchProfile(userId, sessionUser)
         setProfile(data)
         return data
       } catch (err) {
@@ -79,15 +78,17 @@ export function AuthProvider({ children }) {
   }, [])
 
   const refreshSessionRef = useRef(null)
-  refreshSessionRef.current = async (sessionUser) => {
+  refreshSessionRef.current = async (sessionUser, { forceProfile = false } = {}) => {
     if (!sessionUser) {
       setProfile(null)
       setUserDocuments(null)
       profileInflightRef.current.clear()
       return
     }
-    const prof = await loadProfile(sessionUser)
+    if (forceProfile) profileInflightRef.current.delete(sessionUser.id)
+    const prof = await loadProfile(sessionUser, { force: forceProfile })
     await loadUserDocuments(sessionUser.id, prof)
+    logAdminRoleDebug('refreshSession', { user: sessionUser, profile: prof })
   }
 
   const applySessionRef = useRef(null)
@@ -98,7 +99,7 @@ export function AuthProvider({ children }) {
     setUser(sessionUser)
 
     if (sessionUser && (refreshProfile || nextId !== prevId)) {
-      refreshSessionRef.current(sessionUser).catch(() => {})
+      refreshSessionRef.current(sessionUser, { forceProfile: refreshProfile }).catch(() => {})
     }
     if (!sessionUser) {
       setProfile(null)
@@ -130,7 +131,13 @@ export function AuthProvider({ children }) {
     const handleAuthEvent = (event, session) => {
       if (!mounted) return
 
-      if (event === 'TOKEN_REFRESHED') return
+      if (event === 'TOKEN_REFRESHED') {
+        const sessionUser = session?.user ?? null
+        if (sessionUser) {
+          refreshSessionRef.current(sessionUser, { forceProfile: true }).catch(() => {})
+        }
+        return
+      }
 
       const sessionUser = session?.user ?? null
 
@@ -165,7 +172,8 @@ export function AuthProvider({ children }) {
 
       if (sessionUser) {
         const refreshProfile = event === 'USER_UPDATED'
-          || (event === 'SIGNED_IN' && sessionUser.id !== userIdRef.current)
+          || event === 'SIGNED_IN'
+          || sessionUser.id !== userIdRef.current
         applySessionRef.current(sessionUser, { refreshProfile })
       } else {
         applySessionRef.current(null)
@@ -185,8 +193,14 @@ export function AuthProvider({ children }) {
     await authSignOut()
   }, [])
 
-  const isAdmin = profile?.role === 'admin'
+  const effectiveRole = resolveEffectiveRole(profile, user)
+  const isAdmin = isAdminRole(profile, user)
   const isEmailVerified = true
+
+  useEffect(() => {
+    if (!user && !profile) return
+    logAdminRoleDebug('state', { user, profile })
+  }, [user, profile, effectiveRole, isAdmin])
 
   const value = useMemo(() => ({
     user,
@@ -195,6 +209,7 @@ export function AuthProvider({ children }) {
     authLoading,
     profileLoading,
     documentsLoading,
+    effectiveRole,
     isAdmin,
     isEmailVerified,
     loadProfile,
@@ -207,6 +222,7 @@ export function AuthProvider({ children }) {
     authLoading,
     profileLoading,
     documentsLoading,
+    effectiveRole,
     isAdmin,
     loadProfile,
     loadUserDocuments,
