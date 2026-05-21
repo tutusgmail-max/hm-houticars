@@ -1,8 +1,8 @@
 /**
- * Developer-only auth logging. Never surfaces technical details in the UI.
+ * Auth logging for developers — never shown in UI.
  */
 
-function serializeAuthError(err) {
+export function serializeAuthError(err) {
   if (!err) return { message: 'null error' }
 
   const status = err.status ?? err.statusCode ?? err?.context?.status ?? null
@@ -17,9 +17,8 @@ function serializeAuthError(err) {
   }
 }
 
-/** Logs to console.error in development only — never shown to end users */
-export function logAuthError(action, err) {
-  if (!import.meta.env.DEV) return
+/** Always log to console.error so devtools show the real Supabase error */
+export function logAuthError(action, err, extra = null) {
   const info = serializeAuthError(err)
-  console.error(`[Auth] ${action}`, info, err)
+  console.error(`[Auth] ${action}`, info, extra ?? '', err)
 }

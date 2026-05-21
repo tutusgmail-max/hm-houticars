@@ -177,21 +177,25 @@ export default function AuthModal() {
         })
         if (generation !== submitGenerationRef.current) return
 
-        if (result?.session || result?.user) {
+        if (result?.session) {
           submitCompletedRef.current = true
           addToast(AUTH_MESSAGES.signupSuccess, 'success')
-          if (result?.session) closeAuth()
-          else {
-            const savedEmail = form.email
-            setForm({ ...emptyForm(), email: savedEmail })
-            setMode(MODES.login)
-          }
+          closeAuth()
           return
         }
 
-        logAuthError('signUp.emptyResult', { message: 'empty' })
-        setErrors({ form: AUTH_MESSAGES.connectionError })
-        addToast(AUTH_MESSAGES.connectionError, 'error')
+        if (result?.user) {
+          submitCompletedRef.current = true
+          addToast(AUTH_MESSAGES.signupSuccess, 'success')
+          const savedEmail = form.email
+          setForm({ ...emptyForm(), email: savedEmail })
+          setMode(MODES.login)
+          return
+        }
+
+        logAuthError('signUp.emptyResult', { message: 'no user/session in UI handler' })
+        setErrors({ form: AUTH_MESSAGES.retryLater })
+        addToast(AUTH_MESSAGES.retryLater, 'error')
       } else if (submitMode === MODES.forgot) {
         await authForgotPassword(form.email)
         if (generation !== submitGenerationRef.current) return

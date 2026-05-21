@@ -88,6 +88,23 @@ function assertSupabaseConfig() {
 
 assertSupabaseConfig()
 
+/** Safe config snapshot for auth debug logs (no secrets) */
+export function getSupabasePublicConfig() {
+  const urlRef = getSupabaseProjectRefFromUrl(supabaseUrl)
+  const keyRef = decodeJwtPayload(supabaseAnonKey)?.ref ?? null
+  return {
+    url: supabaseUrl,
+    projectRef: urlRef,
+    anonKeyRef: keyRef,
+    refsMatch: !keyRef || keyRef === urlRef,
+    https: supabaseUrl.startsWith('https://'),
+  }
+}
+
+if (import.meta.env.DEV) {
+  console.error('[Supabase] client ready', getSupabasePublicConfig())
+}
+
 /** Only parse OAuth/recovery tokens on routes that need them (avoids stray hash processing) */
 function shouldDetectSessionInUrl() {
   if (typeof window === 'undefined') return false
