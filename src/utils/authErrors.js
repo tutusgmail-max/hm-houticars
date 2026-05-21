@@ -1,20 +1,15 @@
 /**
- * Production-safe auth error messages (French). No technical / debug text.
+ * Client-facing auth messages only (4 simple strings + field validation).
  */
 import { isAuthRateLimited } from './authRequestGuard'
 
 export const AUTH_MESSAGES = {
-  emailInUse: 'Cet email est déjà utilisé.',
-  invalidEmail: 'Adresse email invalide.',
-  weakPassword: 'Le mot de passe doit contenir au moins 6 caractères.',
-  invalidCredentials: 'Email ou mot de passe incorrect.',
-  serverError: 'Une erreur est survenue.',
-  networkError: 'Problème de connexion.',
-  rateLimit: 'Trop de tentatives. Réessayez dans quelques minutes.',
   signupSuccess: 'Compte créé avec succès.',
   loginSuccess: 'Connexion réussie.',
-  signupConfirmLogin: 'Compte créé avec succès. Connectez-vous pour continuer.',
-  signupTooFast: 'Veuillez patienter quelques secondes avant de réessayer.',
+  emailInUse: 'Email déjà utilisé.',
+  connectionError: 'Erreur de connexion.',
+  passwordMin: 'Le mot de passe doit contenir au moins 6 caractères.',
+  invalidEmail: 'Adresse email invalide.',
 }
 
 function normalizeMsg(err) {
@@ -64,27 +59,13 @@ export function isInvalidEmailError(err) {
   )
 }
 
-/** Map any Supabase Auth error to a client-safe French message */
+/** Map errors to simple user messages (no technical details). */
 export function parseAuthError(err) {
-  if (!err) return AUTH_MESSAGES.serverError
-
-  if (err.code === 'AUTH_RATE_LIMIT_COOLDOWN' || err.code === 'AUTH_SIGNUP_TOO_FAST') {
-    return AUTH_MESSAGES.rateLimit
-  }
-
-  if (isNetworkError(err)) return AUTH_MESSAGES.networkError
+  if (!err) return AUTH_MESSAGES.connectionError
   if (isEmailAlreadyRegistered(err)) return AUTH_MESSAGES.emailInUse
   if (isInvalidEmailError(err)) return AUTH_MESSAGES.invalidEmail
-
-  const code = normalizeCode(err)
-
-  if (code === 'invalid_credentials' || code === 'invalid_grant') {
-    return AUTH_MESSAGES.invalidCredentials
+  if (err.code === 'weak_password' || err.code === 'password_too_weak') {
+    return AUTH_MESSAGES.passwordMin
   }
-  if (code === 'weak_password' || code === 'password_too_weak') {
-    return AUTH_MESSAGES.weakPassword
-  }
-  if (isAuthRateLimited(err)) return AUTH_MESSAGES.rateLimit
-
-  return AUTH_MESSAGES.serverError
+  return AUTH_MESSAGES.connectionError
 }

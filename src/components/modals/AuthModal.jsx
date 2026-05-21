@@ -28,10 +28,6 @@ import {
 } from '../../utils/validation'
 import { logAuthError } from '../../utils/authDebug'
 import PasswordInput from '../auth/PasswordInput'
-import {
-  isAuthGloballyBlocked,
-  getAuthBlockedMessage,
-} from '../../utils/authRequestGuard'
 
 const MODES = { login: 'login', signup: 'signup', forgot: 'forgot', sent: 'sent' }
 
@@ -102,8 +98,7 @@ export default function AuthModal() {
     setSentEmail('')
   }, [authModal])
 
-  const [loading, setLoading] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const [errors, setErrors] = useState({})
   const [form, setForm] = useState(() => emptyForm())
   const [sentEmail, setSentEmail] = useState('')
@@ -126,21 +121,14 @@ export default function AuthModal() {
   }, [authModal, mode])
 
   const switchMode = useCallback((next) => {
-    if (loading || isSubmitting) return
+    if (submitting) return
     submitGenerationRef.current += 1
     setMode(next)
     setErrors({})
     setForm(emptyForm())
-  }, [loading, isSubmitting])
+  }, [submitting])
 
-  const isCooldownActive = isAuthGloballyBlocked()
-  const isSubmitDisabled = loading || isSubmitting || isCooldownActive || submitCompletedRef.current
-
-  const releaseSubmitLock = useCallback(() => {
-    window.setTimeout(() => {
-      submitLockRef.current = false
-    }, 500)
-  }, [])
+  const isSubmitDisabled = submitting || submitCompletedRef.current
 
   const upd = (k) => (e) => {
     setForm((p) => ({ ...p, [k]: e.target.value }))
@@ -150,7 +138,7 @@ export default function AuthModal() {
   const handleSubmit = async (e) => {
     e?.preventDefault?.()
     e?.stopPropagation?.()
-    if (submitLockRef.current || submitCompletedRef.current || loading || isSubmitting || isAuthGloballyBlocked()) {
+    if (submitLockRef.current || submitCompletedRef.current || submitting) {
       return
     }
 
@@ -164,8 +152,7 @@ export default function AuthModal() {
     const generation = ++submitGenerationRef.current
     const submitMode = mode
     submitLockRef.current = true
-    setIsSubmitting(true)
-    setLoading(true)
+    setSubmitting(true)
     setErrors((p) => ({ ...p, form: undefined }))
 
     try {
@@ -173,9 +160,9 @@ export default function AuthModal() {
         const result = await authSignIn({ email: form.email, password: form.password })
         if (generation !== submitGenerationRef.current) return
         if (!result?.session) {
-          logAuthError('signIn.noSession', { message: 'missing session after signIn' })
-          setErrors({ form: AUTH_MESSAGES.serverError })
-          addToast(AUTH_MESSAGES.serverError, 'error')
+          logAuthError('signIn.noSession', { message: 'missing session' })
+          setErrors({ form: AUTH_MESSAGES.connectionError })
+          addToast(AUTH_MESSAGES.connectionError, 'error')
           return
         }
         submitCompletedRef.current = true
@@ -190,25 +177,21 @@ export default function AuthModal() {
         })
         if (generation !== submitGenerationRef.current) return
 
-        if (result?.session) {
+        if (result?.session || result?.user) {
           submitCompletedRef.current = true
           addToast(AUTH_MESSAGES.signupSuccess, 'success')
-          closeAuth()
+          if (result?.session) closeAuth()
+          else {
+            const savedEmail = form.email
+            setForm({ ...emptyForm(), email: savedEmail })
+            setMode(MODES.login)
+          }
           return
         }
 
-        if (result?.user) {
-          submitCompletedRef.current = true
-          const savedEmail = form.email
-          setForm({ ...emptyForm(), email: savedEmail })
-          setMode(MODES.login)
-          addToast(AUTH_MESSAGES.signupConfirmLogin, 'success')
-          return
-        }
-
-        logAuthError('signUp.emptyResult', { message: 'no user and no session' })
-        setErrors({ form: AUTH_MESSAGES.serverError })
-        addToast(AUTH_MESSAGES.serverError, 'error')
+        logAuthError('signUp.emptyResult', { message: 'empty' })
+        setErrors({ form: AUTH_MESSAGES.connectionError })
+        addToast(AUTH_MESSAGES.connectionError, 'error')
       } else if (submitMode === MODES.forgot) {
         await authForgotPassword(form.email)
         if (generation !== submitGenerationRef.current) return
@@ -232,17 +215,14 @@ export default function AuthModal() {
       addToast(friendly, 'error')
     } finally {
       if (generation === submitGenerationRef.current) {
-        setLoading(false)
-        setIsSubmitting(false)
-        if (!isAuthGloballyBlocked()) {
-          releaseSubmitLock()
-        }
+        setSubmitting(false)
+        submitLockRef.current = false
       }
     }
   }
 
   const blockEnterResubmit = (e) => {
-    if (e.key === 'Enter' && (isSubmitting || loading || isCooldownActive)) {
+    if (e.key === 'Enter' && submitting) {
       e.preventDefault()
     }
   }
@@ -363,12 +343,6 @@ export default function AuthModal() {
               </motion.div>
             )}
 
-            {isCooldownActive && (
-              <p className="mb-4 text-center text-xs text-amber-200/90">
-                {getAuthBlockedMessage()}
-              </p>
-            )}
-
             <form
               ref={formRef}
               noValidate
@@ -486,7 +460,7 @@ export default function AuthModal() {
                   <motion.button
                     type="submit"
                     disabled={isSubmitDisabled}
-                    aria-busy={loading || isSubmitting}
+                    aria-busy={submitting}
                     whileHover={{ scale: isSubmitDisabled ? 1 : 1.01 }}
                     whileTap={{ scale: isSubmitDisabled ? 1 : 0.99 }}
                     className="w-full py-3.5 rounded-xl font-bold text-[14px] font-condensed uppercase tracking-[2px] border-none cursor-pointer mt-1 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center gap-2"
@@ -496,12 +470,10 @@ export default function AuthModal() {
                       boxShadow: isSubmitDisabled ? 'none' : '0 8px 24px rgba(201,168,76,0.3)',
                     }}
                   >
-                    {loading || isSubmitting ? (
+                    {submitting ? (
                       <>
                         <span className="w-4 h-4 border-2 border-navy/30 border-t-navy rounded-full animate-spin" />
-                        <span>
-                          {mode === MODES.signup ? 'Création en cours...' : 'Un instant...'}
-                        </span>
+                        <span>{mode === MODES.signup ? 'Création...' : 'Connexion...'}</span>
                       </>
                     ) : (
                       <>

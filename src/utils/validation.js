@@ -2,12 +2,17 @@
  * validation.js
  * Pure validation functions — no side effects, fully testable.
  */
+import { AUTH_MESSAGES } from './authErrors'
+
 export {
   parseAuthError,
   AUTH_MESSAGES,
   isEmailAlreadyRegistered,
   isNetworkError,
+  isInvalidEmailError,
 } from './authErrors'
+
+export const SIGNUP_PASSWORD_MIN_MESSAGE = AUTH_MESSAGES.passwordMin
 
 export function validateEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
@@ -25,8 +30,6 @@ export function validatePassword(password) {
 export function validatePasswordSignup(password) {
   return (password || '').length >= 6
 }
-
-export const SIGNUP_PASSWORD_MIN_MESSAGE = 'Le mot de passe doit contenir au moins 6 caractères.'
 
 export function validateLoginForm({ email, password }) {
   const errors = {}

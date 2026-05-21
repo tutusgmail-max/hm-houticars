@@ -1,5 +1,5 @@
 /**
- * auth.service.js — single gateway for Supabase Auth (queued, deduped, timeout-safe).
+ * auth.service.js — Email + password only, deduped requests, fast timeout.
  */
 import { supabase } from '../lib/supabase'
 import { normalizeAuthEmail, runAuthRequest } from '../utils/authRequestGuard'
@@ -7,7 +7,7 @@ import { logAuthError } from '../utils/authDebug'
 import { withAuthTimeout, AuthTimeoutError } from '../utils/authTimeout'
 import { validateEmail, validatePasswordSignup } from '../utils/validation'
 
-const AUTH_TIMEOUT_MS = 25_000
+const AUTH_TIMEOUT_MS = 18_000
 
 let authSubscription = null
 let authListenerCallback = null
@@ -54,8 +54,7 @@ export async function authGetUser() {
 }
 
 /**
- * Production signup — one HTTP call, timeout, metadata for profile trigger.
- * @returns {{ user, session }} Supabase signUp data
+ * Signup — one request; auto sign-in if session missing (Confirm Email OFF).
  */
 export async function authSignUp({ email, password, fullName, phone }) {
   const normalizedEmail = normalizeAuthEmail(email)
@@ -84,22 +83,27 @@ export async function authSignUp({ email, password, fullName, phone }) {
           data: { full_name: displayName, phone: displayPhone },
         },
       })
-
       if (error) throw error
 
-      if (!data?.user && !data?.session) {
-        const empty = new Error('signup empty response')
-        empty.code = 'SIGNUP_EMPTY'
-        throw empty
+      if (data?.session) return data
+
+      if (data?.user) {
+        const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
+          email: normalizedEmail,
+          password: pwd,
+        })
+        if (!signInErr && signInData?.session) {
+          return { user: signInData.user, session: signInData.session }
+        }
+        return data
       }
 
-      return data
+      const empty = new Error('signup empty response')
+      empty.code = 'SIGNUP_EMPTY'
+      throw empty
     } catch (err) {
-      if (err instanceof AuthTimeoutError) {
-        logAuthError('signUp.timeout', err)
-        throw err
-      }
-      logAuthError('signUp', err)
+      if (err instanceof AuthTimeoutError) logAuthError('signUp.timeout', err)
+      else logAuthError('signUp', err)
       throw err
     }
   })

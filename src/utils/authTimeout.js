@@ -1,7 +1,7 @@
 /**
- * Abort long-hanging Supabase Auth HTTP calls (poor network / stalled requests).
+ * Abort stalled Supabase Auth HTTP calls.
  */
-const DEFAULT_AUTH_TIMEOUT_MS = 25_000
+const DEFAULT_AUTH_TIMEOUT_MS = 18_000
 
 export class AuthTimeoutError extends Error {
   constructor() {
