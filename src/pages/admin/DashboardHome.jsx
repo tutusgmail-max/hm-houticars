@@ -31,7 +31,7 @@ export default function DashboardHome() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="admin-page">
       {refreshing && (
         <p className="text-xs text-white/40 text-right">Actualisation…</p>
       )}

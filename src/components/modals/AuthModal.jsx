@@ -24,6 +24,7 @@ import {
   hasErrors,
   parseAuthError,
 } from '../../utils/validation'
+import { isAuthRateLimited, markAuthRateLimited } from '../../utils/authRequestGuard'
 import PasswordInput from '../auth/PasswordInput'
 
 const MODES = { login: 'login', signup: 'signup', forgot: 'forgot', sent: 'sent' }
@@ -102,16 +103,20 @@ export default function AuthModal() {
 
   const firstInputRef = useRef(null)
   const submitLockRef = useRef(false)
+  const submitGenerationRef = useRef(0)
+  const formRef = useRef(null)
 
   useEffect(() => {
     if (authModal) setTimeout(() => firstInputRef.current?.focus(), 150)
   }, [authModal, mode])
 
   const switchMode = useCallback((next) => {
+    if (loading) return
+    submitGenerationRef.current += 1
     setMode(next)
     setErrors({})
     setForm(emptyForm)
-  }, [])
+  }, [loading])
 
   const isSubmitDisabled = loading
 
@@ -122,8 +127,15 @@ export default function AuthModal() {
     setErrors((p) => ({ ...p, [k]: undefined }))
   }
 
+  const releaseSubmitLock = useCallback(() => {
+    window.setTimeout(() => {
+      submitLockRef.current = false
+    }, 500)
+  }, [])
+
   const handleSubmit = async (e) => {
     e?.preventDefault?.()
+    e?.stopPropagation?.()
     if (submitLockRef.current || loading) return
 
     let errs = {}
@@ -133,48 +145,57 @@ export default function AuthModal() {
 
     if (hasErrors(errs)) { setErrors(errs); return }
 
+    const generation = ++submitGenerationRef.current
+    const submitMode = mode
     submitLockRef.current = true
     setLoading(true)
     setErrors((p) => ({ ...p, form: undefined }))
 
     try {
-      if (mode === MODES.login) {
+      if (submitMode === MODES.login) {
         const result = await authSignIn({ email: form.email, password: form.password })
+        if (generation !== submitGenerationRef.current) return
         if (!result?.session) throw new Error('Session introuvable après connexion.')
         addToast('Bienvenue ! Connexion réussie.')
         closeAuth()
-      } else if (mode === MODES.signup) {
+      } else if (submitMode === MODES.signup) {
         const result = await authSignUp({ email: form.email, password: form.password, fullName: form.fullName, phone: form.phone })
+        if (generation !== submitGenerationRef.current) return
         if (!result?.session && !result?.user) {
           throw new Error('Compte non créé. Réessayez une fois.')
         }
         addToast('Compte créé — bienvenue chez HM Houti Cars !')
         closeAuth()
-      } else if (mode === MODES.forgot) {
+      } else if (submitMode === MODES.forgot) {
         await authForgotPassword(form.email)
+        if (generation !== submitGenerationRef.current) return
         setSentEmail(form.email)
         setMode(MODES.sent)
       }
     } catch (err) {
+      if (generation !== submitGenerationRef.current) return
       const friendly = parseAuthError(err)
       setErrors({ form: friendly })
 
+      if (isAuthRateLimited(err)) {
+        markAuthRateLimited(form.email)
+      }
+
       const alreadyUsed = (err?.message || '').toLowerCase().includes('already')
-      if (alreadyUsed && mode === MODES.signup) {
+      if (alreadyUsed && submitMode === MODES.signup) {
         addToast(friendly, 'error')
-        switchMode(MODES.login)
+        setMode(MODES.login)
+        setErrors({})
         return
       }
 
       addToast(friendly, 'error')
     } finally {
-      setLoading(false)
-      submitLockRef.current = false
+      if (generation === submitGenerationRef.current) {
+        setLoading(false)
+        releaseSubmitLock()
+      }
     }
-  }
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !loading) handleSubmit(e)
   }
 
   const titles = {
@@ -291,6 +312,12 @@ export default function AuthModal() {
               </motion.div>
             )}
 
+            <form
+              ref={formRef}
+              noValidate
+              onSubmit={handleSubmit}
+              className={loading ? 'pointer-events-none opacity-95' : ''}
+            >
             <AnimatePresence mode="wait">
               <motion.div
                 key={mode}
@@ -333,7 +360,6 @@ export default function AuthModal() {
                       value={form.email}
                       onChange={upd('email')}
                       autoComplete="email"
-                      onKeyDown={mode === MODES.forgot ? handleKeyDown : undefined}
                       error={errors.email}
                       icon
                     />
@@ -351,7 +377,6 @@ export default function AuthModal() {
                     <PasswordInput
                       value={form.password}
                       onChange={upd('password')}
-                      onKeyDown={handleKeyDown}
                       autoComplete={mode === MODES.signup ? 'new-password' : 'current-password'}
                       className={errors.password ? 'border-red-400/50' : ''}
                     />
@@ -401,9 +426,9 @@ export default function AuthModal() {
                 {/* CTA Button */}
                 {mode !== MODES.sent && (
                   <motion.button
-                    type="button"
-                    onClick={handleSubmit}
+                    type="submit"
                     disabled={isSubmitDisabled}
+                    aria-busy={loading}
                     whileHover={{ scale: isSubmitDisabled ? 1 : 1.01 }}
                     whileTap={{ scale: isSubmitDisabled ? 1 : 0.99 }}
                     className="w-full py-3.5 rounded-xl font-bold text-[14px] font-condensed uppercase tracking-[2px] border-none cursor-pointer mt-1 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center gap-2"
@@ -432,6 +457,7 @@ export default function AuthModal() {
                 )}
               </motion.div>
             </AnimatePresence>
+            </form>
 
             {/* Footer links */}
             {(mode === MODES.login || mode === MODES.signup) && (

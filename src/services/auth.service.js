@@ -1,12 +1,47 @@
 /**
  * auth.service.js
- * Clean service layer wrapping Supabase auth calls.
- * Components never import supabase directly — only this module.
+ * Single gateway for Supabase auth — prevents duplicate API calls.
  */
 import { supabase } from '../lib/supabase'
 import { normalizeAuthEmail, runAuthRequest } from '../utils/authRequestGuard'
 
-// ── Sign Up ─────────────────────────────────────────────────────────────────
+// ── Singleton session bootstrap (StrictMode-safe) ───────────────────────────
+let sessionBootstrapPromise = null
+
+export async function authGetSession() {
+  if (!sessionBootstrapPromise) {
+    sessionBootstrapPromise = supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) throw error
+      return session
+    })
+  }
+  return sessionBootstrapPromise
+}
+
+// ── Singleton auth state listener (one subscription for entire app) ─────────
+const authSubscribers = new Set()
+let authSubscription = null
+
+export function authOnChange(callback) {
+  authSubscribers.add(callback)
+
+  if (!authSubscription) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      authSubscribers.forEach((cb) => {
+        try { cb(event, session) } catch (e) { console.warn('[authOnChange]', e) }
+      })
+    })
+    authSubscription = subscription
+  }
+
+  return {
+    unsubscribe: () => {
+      authSubscribers.delete(callback)
+    },
+  }
+}
+
+// ── Sign Up (single signUp call — no follow-up signIn) ───────────────────────
 export async function authSignUp({ email, password, fullName, phone }) {
   const normalizedEmail = normalizeAuthEmail(email)
   const displayName = (fullName || '').trim() || normalizedEmail.split('@')[0] || 'Client'
@@ -18,12 +53,10 @@ export async function authSignUp({ email, password, fullName, phone }) {
       password,
       options: {
         data: { full_name: displayName, phone: displayPhone },
-        // Supabase dashboard: disable "Confirm email" for instant session
       },
     })
     if (error) throw error
 
-    // Upsert profile in background — do not block signup UX
     if (data.user) {
       supabase.from('profiles').upsert({
         id: data.user.id,
@@ -34,15 +67,6 @@ export async function authSignUp({ email, password, fullName, phone }) {
       }, { onConflict: 'id' }).then(({ error: profileError }) => {
         if (profileError) console.warn('[authSignUp] profile upsert:', profileError.message)
       })
-    }
-
-    // Instant access: some projects return user without session until auto sign-in
-    if (!data.session) {
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: normalizedEmail,
-        password,
-      })
-      if (!signInError && signInData?.session) return signInData
     }
 
     return data
@@ -65,6 +89,7 @@ export async function authSignIn({ email, password }) {
 
 // ── Sign Out ─────────────────────────────────────────────────────────────────
 export async function authSignOut() {
+  sessionBootstrapPromise = null
   const { error } = await supabase.auth.signOut()
   if (error) throw error
 }
@@ -81,7 +106,7 @@ export async function authForgotPassword(email) {
   })
 }
 
-// ── Reset Password (from email link) ─────────────────────────────────────────
+// ── Reset Password ───────────────────────────────────────────────────────────
 export async function authResetPassword(newPassword) {
   return runAuthRequest('resetPassword', 'session', async () => {
     const { error } = await supabase.auth.updateUser({ password: newPassword })
@@ -89,23 +114,9 @@ export async function authResetPassword(newPassword) {
   })
 }
 
-// ── Change Password (authenticated) ──────────────────────────────────────────
 export async function authChangePassword(newPassword) {
   return runAuthRequest('resetPassword', 'change', async () => {
     const { error } = await supabase.auth.updateUser({ password: newPassword })
     if (error) throw error
   })
-}
-
-// ── Get current session ───────────────────────────────────────────────────────
-export async function authGetSession() {
-  const { data: { session }, error } = await supabase.auth.getSession()
-  if (error) throw error
-  return session
-}
-
-// ── Subscribe to auth changes ─────────────────────────────────────────────────
-export function authOnChange(callback) {
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(callback)
-  return subscription
 }

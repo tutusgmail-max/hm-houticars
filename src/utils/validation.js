@@ -2,7 +2,7 @@
  * validation.js
  * Pure validation functions — no side effects, fully testable.
  */
-import { isAuthRateLimited } from './authRequestGuard'
+import { isAuthRateLimited, isAuthThrottleError } from './authRequestGuard'
 
 export function validateEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
@@ -84,6 +84,11 @@ export function hasErrors(errors) {
 
 /** Map Supabase error messages → user-friendly French text */
 export function parseAuthError(err) {
+  if (isAuthThrottleError(err)) {
+    const sec = Math.max(1, Math.ceil((err.waitMs || 1000) / 1000))
+    return `Veuillez patienter ${sec}s avant de réessayer.`
+  }
+
   const msg = (err?.message || err?.error_description || '').toLowerCase()
 
   if (msg.includes('invalid login credentials') || msg.includes('invalid_credentials')) {

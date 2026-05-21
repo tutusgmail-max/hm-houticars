@@ -1,6 +1,5 @@
 /**
- * AuthContext.jsx — session-first bootstrap (no blank screen / infinite loader).
- * Profile loads in background; duplicate auth events are deduped.
+ * AuthContext.jsx — session-first bootstrap, singleton listener, no duplicate events.
  */
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { authGetSession, authOnChange, authSignOut } from '../services/auth.service'
@@ -20,6 +19,7 @@ export function AuthProvider({ children }) {
   const bootstrappedRef = useRef(false)
   const userIdRef = useRef(null)
   const profileInflightRef = useRef(new Map())
+  const lastSignedInRef = useRef({ userId: null, at: 0 })
 
   const loadUserDocuments = useCallback(async (userId, legacyProfile) => {
     if (!userId) { setUserDocuments(null); return null }
@@ -109,7 +109,7 @@ export function AuthProvider({ children }) {
     let mounted = true
 
     const finishBootstrap = (sessionUser) => {
-      if (!mounted) return
+      if (!mounted || bootstrappedRef.current) return
       bootstrappedRef.current = true
       applySession(sessionUser, { refreshProfile: !!sessionUser })
       setAuthLoading(false)
@@ -118,22 +118,25 @@ export function AuthProvider({ children }) {
     authGetSession()
       .then((session) => finishBootstrap(session?.user ?? null))
       .catch(() => {
-        if (mounted) {
+        if (mounted && !bootstrappedRef.current) {
           bootstrappedRef.current = true
           setAuthLoading(false)
         }
       })
 
-    const subscription = authOnChange((event, session) => {
+    const handleAuthEvent = (event, session) => {
       if (!mounted) return
-
       if (event === 'TOKEN_REFRESHED') return
 
       const sessionUser = session?.user ?? null
 
-      // Bootstrap via listener only if getSession has not completed yet
       if (event === 'INITIAL_SESSION') {
-        if (!bootstrappedRef.current) finishBootstrap(sessionUser)
+        finishBootstrap(sessionUser)
+        return
+      }
+
+      if (!bootstrappedRef.current) {
+        finishBootstrap(sessionUser)
         return
       }
 
@@ -144,11 +147,30 @@ export function AuthProvider({ children }) {
         return
       }
 
+      // Dedupe duplicate SIGNED_IN bursts (signUp + listener)
+      if (event === 'SIGNED_IN' && sessionUser?.id) {
+        const now = Date.now()
+        if (
+          lastSignedInRef.current.userId === sessionUser.id
+          && now - lastSignedInRef.current.at < 2500
+        ) {
+          setUser(sessionUser)
+          return
+        }
+        lastSignedInRef.current = { userId: sessionUser.id, at: now }
+      }
+
       if (sessionUser) {
-        applySession(sessionUser, { refreshProfile: event === 'SIGNED_IN' || event === 'USER_UPDATED' })
+        const refreshProfile = event === 'SIGNED_IN' || event === 'USER_UPDATED'
+        applySession(sessionUser, { refreshProfile })
       } else {
         applySession(null)
       }
+    }
+
+    const subscription = authOnChange((event, session) => {
+      // Defer to avoid Supabase auth deadlocks / duplicate sync calls
+      queueMicrotask(() => handleAuthEvent(event, session))
     })
 
     return () => {

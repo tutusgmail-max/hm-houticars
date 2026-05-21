@@ -1,10 +1,7 @@
 /**
- * AdminLayout.jsx — v5
- * - AdminDataProvider scoped to /admin
- * - Responsive sidebar (mobile overlay + desktop collapse)
- * - Global error banner + initial loading gate (no infinite spinner on realtime)
+ * AdminLayout.jsx — production data layer + mobile-first shell
  */
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { AlertTriangle, RefreshCw } from 'lucide-react'
 import AdminSidebar from '../components/admin/AdminSidebar'
@@ -32,7 +29,7 @@ function resolvePageMeta(pathname) {
 
 function AdminLoadingGate() {
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="admin-stats-grid">
       {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
         <div key={i} className="h-28 rounded-2xl bg-white/5 animate-pulse" />
       ))}
@@ -44,39 +41,49 @@ function AdminLayoutInner() {
   const location = useLocation()
   const { loading, error, refresh, refreshing, reservations } = useAdminData()
   const [collapsed, setCollapsed] = useState(false)
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const { title, subtitle } = resolvePageMeta(location.pathname)
   const showInitialLoader = loading && reservations.length === 0
 
+  useEffect(() => {
+    setSidebarOpen(false)
+  }, [location.pathname])
+
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') setSidebarOpen(false) }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  useEffect(() => {
+    document.body.classList.toggle('sidebar-open', sidebarOpen)
+    return () => document.body.classList.remove('sidebar-open')
+  }, [sidebarOpen])
+
   return (
-    <div className="flex h-screen bg-[#0A0A0A] text-white overflow-hidden">
-      {mobileOpen && (
+    <div className="admin-shell">
+      {sidebarOpen && (
         <button
           type="button"
+          className="admin-overlay lg:hidden"
           aria-label="Fermer le menu"
-          className="fixed inset-0 z-[290] bg-black/60 lg:hidden"
-          onClick={() => setMobileOpen(false)}
+          onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      <div
-        className={`shrink-0 fixed lg:relative z-[300] h-full transition-transform duration-300 ${
-          mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        }`}
-      >
-        <AdminSidebar
-          collapsed={collapsed}
-          onToggle={() => setCollapsed((c) => !c)}
-          onNavigate={() => setMobileOpen(false)}
-        />
-      </div>
+      <AdminSidebar
+        collapsed={collapsed}
+        onToggle={() => setCollapsed((c) => !c)}
+        mobileOpen={sidebarOpen}
+        onMobileClose={() => setSidebarOpen(false)}
+      />
 
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+      <div className={`admin-content ${collapsed ? 'admin-content--collapsed' : ''}`}>
         <AdminHeader
           title={title}
           subtitle={subtitle}
-          onMenuClick={() => setMobileOpen(true)}
+          onMenuClick={() => setSidebarOpen(true)}
           refreshing={refreshing}
         />
 
@@ -90,7 +97,7 @@ function AdminLayoutInner() {
               type="button"
               onClick={() => refresh()}
               disabled={loading || refreshing}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-100 font-semibold text-xs hover:bg-amber-500/30 disabled:opacity-50"
+              className="admin-btn admin-btn--ghost text-xs disabled:opacity-50"
             >
               <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
               Réessayer
@@ -98,7 +105,7 @@ function AdminLayoutInner() {
           </div>
         )}
 
-        <main className="flex-1 w-full min-w-0 overflow-y-auto overflow-x-hidden p-4 sm:p-6">
+        <main className="admin-main">
           {showInitialLoader ? <AdminLoadingGate /> : <Outlet />}
         </main>
       </div>

@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiPhone, FiUser, FiLogOut, FiGrid, FiChevronRight } from 'react-icons/fi'
@@ -46,6 +46,11 @@ export default function Navbar() {
 
   const displayName = profile?.full_name?.split(' ')[0] || 'Mon espace'
   const initials = getInitials(profile?.full_name)
+
+  useEffect(() => {
+    document.body.style.overflow = mobileOpen ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [mobileOpen])
 
   return (
     <>

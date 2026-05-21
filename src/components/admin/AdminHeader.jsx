@@ -4,41 +4,56 @@ import { useAdminData } from '../../context/AdminDataContext'
 import { Menu, RefreshCw } from 'lucide-react'
 import NotificationsBell from './NotificationsBell'
 
-export default function AdminHeader({ title = 'Administration', subtitle, onMenuClick, refreshing }) {
+export default function AdminHeader({
+  title = 'Administration',
+  subtitle = '',
+  onMenuClick,
+  refreshing,
+}) {
   const { profile } = useAuth()
   const { refresh, loading, refreshing: ctxRefreshing } = useAdminData()
   const isRefreshing = refreshing ?? ctxRefreshing
 
   return (
-    <header className="sticky top-0 z-[250] border-b border-white/10 bg-[#0a0f14]/80 backdrop-blur-xl">
-      <div className="flex items-center justify-between gap-4 px-4 sm:px-8 py-4">
-        <div className="flex items-center gap-4 min-w-0">
-          <button type="button" onClick={onMenuClick} className="lg:hidden p-2 rounded-lg border border-white/10 text-white/70 hover:bg-white/5">
+    <header className="admin-header">
+      <div className="admin-header__inner">
+        <div className="admin-header__left">
+          <button
+            type="button"
+            onClick={onMenuClick}
+            className="admin-header__menu-btn"
+            aria-label="Ouvrir le menu"
+          >
             <Menu size={20} />
           </button>
-          <div className="min-w-0">
-            <h1 className="font-['Barlow_Condensed',sans-serif] text-2xl font-black text-white truncate">{title}</h1>
-            {subtitle && <p className="text-sm text-white/45 truncate">{subtitle}</p>}
+          <div className="admin-header__titles">
+            <h1 className="admin-header__title">{title}</h1>
+            {subtitle && (
+              <p className="admin-header__subtitle">{subtitle}</p>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+
+        <div className="admin-header__right">
           <button
             type="button"
             onClick={refresh}
             disabled={loading || isRefreshing}
-            className="p-2.5 rounded-xl border border-white/10 text-white/60 hover:text-[#C9A84C] hover:border-[#C9A84C]/30 transition-colors disabled:opacity-50"
-            title="Actualiser"
+            className="admin-header__icon-btn"
+            title="Actualiser les données"
           >
             <RefreshCw size={18} className={isRefreshing ? 'animate-spin' : ''} />
           </button>
           <NotificationsBell />
-          <div className="hidden sm:flex items-center gap-3 pl-3 border-l border-white/10">
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#C9A84C] to-[#E8C76A] flex items-center justify-center text-[#0B1623] font-black text-sm">
-              {profile?.full_name?.charAt(0) || 'A'}
+          <div className="admin-header__profile">
+            <div className="admin-header__avatar">
+              {profile?.full_name?.charAt(0)?.toUpperCase() || 'A'}
             </div>
-            <div className="text-right">
-              <p className="text-sm font-semibold text-white leading-tight">{profile?.full_name || 'Admin'}</p>
-              <p className="text-[10px] text-[#C9A84C] uppercase tracking-wider">Administrateur</p>
+            <div className="admin-header__profile-info">
+              <p className="admin-header__profile-name">
+                {profile?.full_name || 'Admin'}
+              </p>
+              <p className="admin-header__profile-role">Administrateur</p>
             </div>
           </div>
         </div>

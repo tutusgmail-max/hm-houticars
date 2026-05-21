@@ -9,6 +9,8 @@ import {
   Settings,
   ChevronLeft,
   ExternalLink,
+  X,
+  FolderOpen,
 } from 'lucide-react'
 
 const NAV = [
@@ -16,70 +18,79 @@ const NAV = [
   { to: '/admin/fleet', label: 'Flotte', icon: Car },
   { to: '/admin/calendar', label: 'Calendrier', icon: CalendarDays },
   { to: '/admin/reservations', label: 'Réservations', icon: FileText },
-  { to: '/admin/documents', label: 'Documents', icon: FileText },
+  { to: '/admin/documents', label: 'Documents', icon: FolderOpen },
   { to: '/admin/customers', label: 'Clients', icon: Users },
   { to: '/admin/settings', label: 'Paramètres', icon: Settings },
 ]
 
-export default function AdminSidebar({ collapsed = false, onToggle, onNavigate }) {
+export default function AdminSidebar({ collapsed, onToggle, mobileOpen, onMobileClose }) {
   return (
     <aside
-      className={`fixed left-0 top-0 z-[300] h-full flex flex-col border-r border-white/10 bg-[#070d14]/95 backdrop-blur-xl transition-all duration-300 ${
-        collapsed ? 'w-[72px]' : 'w-[260px]'
-      }`}
+      className={`admin-sidebar ${mobileOpen ? 'admin-sidebar--open' : ''} ${collapsed ? 'admin-sidebar--collapsed' : ''}`}
+      role="navigation"
+      aria-label="Navigation admin"
     >
-      <div className="p-5 border-b border-white/10 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#C9A84C] to-[#E8C76A] flex items-center justify-center font-black text-[#0B1623] shrink-0">
-          HM
+      <div className="admin-sidebar__header">
+        <div className="admin-sidebar__logo">
+          <div className="admin-sidebar__logo-mark">HM</div>
+          {!collapsed && (
+            <div className="admin-sidebar__logo-text">
+              <p className="admin-sidebar__brand">HM HOUTI</p>
+              <p className="admin-sidebar__role">Admin Panel</p>
+            </div>
+          )}
         </div>
-        {!collapsed && (
-          <div className="min-w-0">
-            <p className="font-['Barlow_Condensed',sans-serif] font-black text-white text-lg leading-tight">
-              HM HOUTI
-            </p>
-            <p className="text-[10px] uppercase tracking-widest text-[#C9A84C]/80">Admin Panel</p>
-          </div>
-        )}
+        <button
+          type="button"
+          onClick={onMobileClose}
+          className="admin-sidebar__close-btn"
+          aria-label="Fermer le menu"
+        >
+          <X size={20} />
+        </button>
       </div>
 
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+      <nav className="admin-sidebar__nav">
+        <div className="admin-sidebar__nav-label">
+          {!collapsed && <span>Menu principal</span>}
+        </div>
         {NAV.map(({ to, end, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
             end={end}
-            onClick={onNavigate}
+            onClick={onMobileClose}
             className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                isActive
-                  ? 'bg-[#C9A84C]/15 text-[#C9A84C] border border-[#C9A84C]/25'
-                  : 'text-white/55 hover:text-white hover:bg-white/5 border border-transparent'
-              }`
+              `admin-sidebar__link ${isActive ? 'admin-sidebar__link--active' : ''}`
             }
           >
-            <Icon size={20} className="shrink-0" />
-            {!collapsed && <span>{label}</span>}
+            <Icon size={20} className="admin-sidebar__link-icon" />
+            {!collapsed && <span className="admin-sidebar__link-label">{label}</span>}
           </NavLink>
         ))}
       </nav>
 
-      <div className="p-3 border-t border-white/10 space-y-1">
+      <div className="admin-sidebar__footer">
         <a
           href="/"
           target="_blank"
           rel="noreferrer"
-          className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-white/50 hover:text-white hover:bg-white/5"
+          className="admin-sidebar__link admin-sidebar__link--muted"
         >
-          <ExternalLink size={18} />
-          {!collapsed && 'Voir le site'}
+          <ExternalLink size={18} className="admin-sidebar__link-icon" />
+          {!collapsed && <span className="admin-sidebar__link-label">Voir le site</span>}
         </a>
         <button
           type="button"
           onClick={onToggle}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-white/40 hover:text-white hover:bg-white/5 text-xs"
+          className="admin-sidebar__collapse-btn"
+          aria-label={collapsed ? 'Étendre le menu' : 'Réduire le menu'}
         >
-          <ChevronLeft size={16} className={collapsed ? 'rotate-180' : ''} />
-          {!collapsed && 'Réduire'}
+          <ChevronLeft
+            size={16}
+            className={`admin-sidebar__collapse-icon ${collapsed ? 'rotate-180' : ''}`}
+          />
+          {!collapsed && <span>Réduire</span>}
         </button>
       </div>
     </aside>
