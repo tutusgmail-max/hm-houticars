@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase'
 import { normalizeAuthEmail, runAuthRequest } from '../utils/authRequestGuard'
 import { logAuthError } from '../utils/authDebug'
 import { withAuthTimeout, AuthTimeoutError } from '../utils/authTimeout'
-import { validateEmail } from '../utils/validation'
+import { validateEmail, validatePasswordSignup } from '../utils/validation'
 
 const AUTH_TIMEOUT_MS = 25_000
 
@@ -66,7 +66,7 @@ export async function authSignUp({ email, password, fullName, phone }) {
     err.code = 'email_address_invalid'
     throw err
   }
-  if (!pwd || pwd.length < 8) {
+  if (!validatePasswordSignup(pwd)) {
     const err = new Error('weak password')
     err.code = 'weak_password'
     throw err

@@ -21,11 +21,12 @@ export function validatePassword(password) {
   return password.length >= 8
 }
 
-/** Signup — 8+ chars with letters and digits */
+/** Signup — minimum 6 characters (no complexity rules) */
 export function validatePasswordSignup(password) {
-  const p = password || ''
-  return p.length >= 8 && /[a-zA-Z]/.test(p) && /\d/.test(p)
+  return (password || '').length >= 6
 }
+
+export const SIGNUP_PASSWORD_MIN_MESSAGE = 'Le mot de passe doit contenir au moins 6 caractères.'
 
 export function validateLoginForm({ email, password }) {
   const errors = {}
@@ -58,7 +59,7 @@ export function validateSignupFormSimple({ fullName, phone, email, password }) {
 export function validateSignupFormMinimal({ fullName, phone, email, password }) {
   const errors = {}
   if (!validateEmail(email || '')) errors.email = 'Adresse email invalide'
-  if (!validatePasswordSignup(password)) errors.password = '8 caractères minimum, avec lettres et chiffres'
+  if (!validatePasswordSignup(password)) errors.password = SIGNUP_PASSWORD_MIN_MESSAGE
   if (fullName?.trim() && fullName.trim().length < 2) errors.fullName = 'Nom trop court'
   if (phone?.trim() && !validatePhone(phone)) errors.phone = 'Numéro invalide'
   return errors

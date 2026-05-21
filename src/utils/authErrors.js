@@ -6,7 +6,7 @@ import { isAuthRateLimited } from './authRequestGuard'
 export const AUTH_MESSAGES = {
   emailInUse: 'Cet email est déjà utilisé.',
   invalidEmail: 'Adresse email invalide.',
-  weakPassword: '8 caractères minimum, avec lettres et chiffres.',
+  weakPassword: 'Le mot de passe doit contenir au moins 6 caractères.',
   invalidCredentials: 'Email ou mot de passe incorrect.',
   serverError: 'Une erreur est survenue.',
   networkError: 'Problème de connexion.',

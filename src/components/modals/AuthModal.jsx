@@ -427,7 +427,7 @@ export default function AuthModal() {
                 {/* Password */}
                 {(mode === MODES.login || mode === MODES.signup) && (
                   <PremiumField
-                    label={mode === MODES.signup ? 'Mot de passe (8+ lettres et chiffres)' : 'Mot de passe'}
+                    label={mode === MODES.signup ? 'Mot de passe (6 caractères minimum)' : 'Mot de passe'}
                     error={errors.password}
                     icon={FiLock}
                     delay={0.08}
