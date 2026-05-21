@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiPhone, FiUser, FiLogOut, FiGrid, FiChevronRight } from 'react-icons/fi'
@@ -28,22 +28,7 @@ export default function Navbar() {
   const { user, profile, isAdmin, signOut } = useAuth()
   const scrolled = useScrolled(20)
   const navigate = useNavigate()
-  const [userMenuOpen, setUserMenuOpen] = useState(false)
-  const menuRef = useRef(null)
-
-  useEffect(() => {
-    if (!userMenuOpen) return
-    const handler = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setUserMenuOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [userMenuOpen])
-
   const handleLogout = async () => {
-    setUserMenuOpen(false)
     try {
       await signOut()
       addToast('Déconnexion réussie.')
@@ -54,6 +39,7 @@ export default function Navbar() {
   }
 
   const handleNavClick = (id) => {
+    setMobileOpen(false)
     navigate('/')
     setTimeout(() => scrollTo(id), 100)
   }
@@ -129,7 +115,17 @@ export default function Navbar() {
           ))}
         </ul>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <a
+            href="https://wa.me/212611460900"
+            target="_blank"
+            rel="noreferrer"
+            className="hidden sm:flex items-center gap-2 px-3 py-2 rounded font-condensed text-[11px] font-bold uppercase tracking-[1.5px] no-underline transition-all duration-200"
+            style={{ color: '#25D366', border: '1px solid rgba(37,211,102,0.2)', background: 'rgba(37,211,102,0.05)' }}
+            aria-label="WhatsApp HM Houti Cars"
+          >
+            <FaWhatsapp size={14} /> WhatsApp
+          </a>
           <a
             href="tel:+212611460900"
             className="hidden lg:flex items-center gap-1.5 text-[13px] font-medium no-underline transition-colors duration-200 hover:text-white"
@@ -151,7 +147,7 @@ export default function Navbar() {
                 </button>
               )}
 
-              <div ref={menuRef} style={{ position: 'relative' }}>
+              <div style={{ position: 'relative' }}>
                 <button
                   type="button"
                   className="mon-espace-btn"
@@ -325,22 +321,24 @@ export default function Navbar() {
                 )}
               </div>
 
-              <a
-                href="tel:+212611460900"
-                className="flex items-center gap-3 font-semibold py-3.5 px-2 no-underline"
-                style={{ color: '#C9A84C' }}
-              >
-                <FiPhone size={16} /> +212 611 460 900
-              </a>
-              <a
-                href="https://wa.me/212611460900"
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-3 font-semibold py-3.5 px-2 no-underline"
-                style={{ color: '#25D366' }}
-              >
-                <FaWhatsapp size={16} /> WhatsApp
-              </a>
+              <div className="flex gap-3 mt-2">
+                <a
+                  href="https://wa.me/212611460900"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-1 flex items-center justify-center gap-2 py-3 rounded font-condensed text-[12px] font-bold uppercase tracking-[1.5px] no-underline"
+                  style={{ background: 'rgba(37,211,102,0.08)', color: '#25D366', border: '1px solid rgba(37,211,102,0.2)' }}
+                >
+                  <FaWhatsapp size={15} /> WhatsApp
+                </a>
+                <a
+                  href="tel:+212611460900"
+                  className="flex-1 flex items-center justify-center gap-2 py-3 rounded font-condensed text-[12px] font-bold uppercase tracking-[1.5px] no-underline"
+                  style={{ background: 'rgba(201,168,76,0.07)', color: '#C9A84C', border: '1px solid rgba(201,168,76,0.2)' }}
+                >
+                  <FiPhone size={14} /> Appeler
+                </a>
+              </div>
             </motion.div>
           </>
         )}
