@@ -9,12 +9,12 @@
  *
  * We just need to show a "new password" form and call authResetPassword().
  */
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { FiLock, FiCheck } from 'react-icons/fi'
 import { authResetPassword } from '../services/auth.service'
-import { validateResetForm, hasErrors } from '../utils/validation'
+import { validateResetForm, hasErrors, parseAuthError } from '../utils/validation'
 import AuthField from '../components/auth/AuthField'
 import PasswordInput from '../components/auth/PasswordInput'
 import AuthButton from '../components/auth/AuthButton'
@@ -28,6 +28,7 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const [globalError, setGlobalError] = useState('')
+  const submitLockRef = useRef(false)
 
   // If accessed without a valid recovery session, redirect home
   useEffect(() => {
@@ -47,18 +48,21 @@ export default function ResetPasswordPage() {
   }
 
   const handleSubmit = async () => {
+    if (submitLockRef.current || loading) return
     const errs = validateResetForm(form)
     if (hasErrors(errs)) { setErrors(errs); return }
 
+    submitLockRef.current = true
     setLoading(true)
     try {
       await authResetPassword(form.password)
       setDone(true)
       setTimeout(() => navigate('/dashboard', { replace: true }), 2500)
     } catch (err) {
-      setGlobalError(err?.message || 'Erreur lors de la réinitialisation.')
+      setGlobalError(parseAuthError(err))
     } finally {
       setLoading(false)
+      submitLockRef.current = false
     }
   }
 

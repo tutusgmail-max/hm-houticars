@@ -24,6 +24,7 @@ import {
   hasErrors,
   parseAuthError,
 } from '../../utils/validation'
+import { getAuthCooldownRemaining, getRateLimitWaitMs, isAuthRateLimited } from '../../utils/authRequestGuard'
 import PasswordInput from '../auth/PasswordInput'
 
 const MODES = { login: 'login', signup: 'signup', forgot: 'forgot', sent: 'sent' }
@@ -85,7 +86,7 @@ function PremiumInput({ icon, error, inputRef, ...props }) {
 }
 
 export default function AuthModal() {
-  const { authModal, authNotice, closeAuth, addToast, openAuth } = useApp()
+  const { authModal, authNotice, closeAuth, addToast } = useApp()
 
   const [mode, setMode] = useState(authModal || MODES.login)
   useEffect(() => {
@@ -96,18 +97,33 @@ export default function AuthModal() {
   const [errors, setErrors] = useState({})
   const [form, setForm] = useState(emptyForm)
   const [sentEmail, setSentEmail] = useState('')
+  const [cooldownUntil, setCooldownUntil] = useState(0)
+  const [cooldownTick, setCooldownTick] = useState(0)
 
   const firstInputRef = useRef(null)
+  const submitLockRef = useRef(false)
 
   useEffect(() => {
     if (authModal) setTimeout(() => firstInputRef.current?.focus(), 150)
   }, [authModal, mode])
+
+  useEffect(() => {
+    if (!cooldownUntil || Date.now() >= cooldownUntil) return undefined
+    const id = setInterval(() => setCooldownTick((t) => t + 1), 1000)
+    return () => clearInterval(id)
+  }, [cooldownUntil, cooldownTick])
 
   const switchMode = useCallback((next) => {
     setMode(next)
     setErrors({})
     setForm(emptyForm)
   }, [])
+
+  const cooldownRemainingSec = cooldownUntil > Date.now()
+    ? Math.ceil((cooldownUntil - Date.now()) / 1000)
+    : 0
+  const isCooldown = cooldownRemainingSec > 0
+  const isSubmitDisabled = loading || isCooldown
 
   if (!authModal) return null
 
@@ -116,7 +132,10 @@ export default function AuthModal() {
     setErrors((p) => ({ ...p, [k]: undefined }))
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e) => {
+    e?.preventDefault?.()
+    if (submitLockRef.current || loading || isCooldown) return
+
     let errs = {}
     if (mode === MODES.login)  errs = validateLoginForm(form)
     if (mode === MODES.signup) errs = validateSignupFormSimple(form)
@@ -124,7 +143,17 @@ export default function AuthModal() {
 
     if (hasErrors(errs)) { setErrors(errs); return }
 
+    const actionKey = mode === MODES.login ? 'signIn' : mode === MODES.signup ? 'signUp' : 'forgotPassword'
+    const clientWait = getAuthCooldownRemaining(actionKey)
+    if (clientWait > 0) {
+      setErrors({ form: parseAuthError({ code: 'AUTH_COOLDOWN', waitMs: clientWait }) })
+      return
+    }
+
+    submitLockRef.current = true
     setLoading(true)
+    setErrors((p) => ({ ...p, form: undefined }))
+
     try {
       if (mode === MODES.login) {
         await authSignIn({ email: form.email, password: form.password })
@@ -140,13 +169,31 @@ export default function AuthModal() {
         setMode(MODES.sent)
       }
     } catch (err) {
-      addToast(parseAuthError(err), 'error')
+      const friendly = parseAuthError(err)
+      setErrors({ form: friendly })
+
+      if (isAuthRateLimited(err)) {
+        const waitMs = getRateLimitWaitMs(err) || 60_000
+        setCooldownUntil(Date.now() + waitMs)
+      }
+
+      const alreadyUsed = (err?.message || '').toLowerCase().includes('already')
+      if (alreadyUsed && mode === MODES.signup) {
+        addToast(friendly, 'error')
+        switchMode(MODES.login)
+        return
+      }
+
+      addToast(friendly, 'error')
     } finally {
       setLoading(false)
+      submitLockRef.current = false
     }
   }
 
-  const handleKeyDown = (e) => { if (e.key === 'Enter') handleSubmit() }
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !isSubmitDisabled) handleSubmit(e)
+  }
 
   const titles = {
     login:  'Bon retour',
@@ -251,6 +298,22 @@ export default function AuthModal() {
 
           {/* Body */}
           <div className="px-7 py-6">
+            {errors.form && mode !== MODES.sent && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-4 rounded-xl px-4 py-3 text-xs leading-relaxed text-amber-100/90"
+                style={{ border: '1px solid rgba(251,191,36,0.25)', background: 'rgba(251,191,36,0.08)' }}
+              >
+                {errors.form}
+                {isCooldown && (
+                  <span className="block mt-1 text-white/50">
+                    Réessayez dans {cooldownRemainingSec}s
+                  </span>
+                )}
+              </motion.div>
+            )}
+
             <AnimatePresence mode="wait">
               <motion.div
                 key={mode}
@@ -358,20 +421,24 @@ export default function AuthModal() {
                   <motion.button
                     type="button"
                     onClick={handleSubmit}
-                    disabled={loading}
-                    whileHover={{ scale: loading ? 1 : 1.01 }}
-                    whileTap={{ scale: loading ? 1 : 0.99 }}
+                    disabled={isSubmitDisabled}
+                    whileHover={{ scale: isSubmitDisabled ? 1 : 1.01 }}
+                    whileTap={{ scale: isSubmitDisabled ? 1 : 0.99 }}
                     className="w-full py-3.5 rounded-xl font-bold text-[14px] font-condensed uppercase tracking-[2px] border-none cursor-pointer mt-1 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center gap-2"
                     style={{
-                      background: loading ? 'rgba(201,168,76,0.6)' : 'linear-gradient(135deg, #E8C76A 0%, #C9A84C 100%)',
+                      background: isSubmitDisabled ? 'rgba(201,168,76,0.6)' : 'linear-gradient(135deg, #E8C76A 0%, #C9A84C 100%)',
                       color: '#0B1623',
-                      boxShadow: loading ? 'none' : '0 8px 24px rgba(201,168,76,0.3)',
+                      boxShadow: isSubmitDisabled ? 'none' : '0 8px 24px rgba(201,168,76,0.3)',
                     }}
                   >
                     {loading ? (
                       <>
                         <span className="w-4 h-4 border-2 border-navy/30 border-t-navy rounded-full animate-spin" />
                         <span>Chargement...</span>
+                      </>
+                    ) : isCooldown ? (
+                      <>
+                        <span>Patientez {cooldownRemainingSec}s</span>
                       </>
                     ) : (
                       <>
@@ -415,8 +482,8 @@ export default function AuthModal() {
                   )}
                 </div>
 
-                {/* Guest reservation hint */}
-                {mode === MODES.signup && (
+                {/* Guest reservation — return to booking without account */}
+                {(mode === MODES.signup || (mode === MODES.login && authNotice)) && (
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -424,10 +491,11 @@ export default function AuthModal() {
                     className="text-center"
                   >
                     <button
+                      type="button"
                       onClick={closeAuth}
                       className="text-white/25 text-[11px] bg-transparent border-none cursor-pointer hover:text-white/50 transition-colors"
                     >
-                      Continuer sans compte →
+                      Continuer ma réservation sans compte →
                     </button>
                   </motion.div>
                 )}

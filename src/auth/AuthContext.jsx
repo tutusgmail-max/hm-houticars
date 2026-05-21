@@ -95,6 +95,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let mounted = true
+    const bootstrappedRef = { current: false }
 
     authGetSession().then(async (session) => {
       if (!mounted) return
@@ -105,12 +106,14 @@ export function AuthProvider({ children }) {
           await refreshSession(sessionUser)
         }
       } finally {
+        bootstrappedRef.current = true
         // Ensure we always exit the initial loading state even if profile/doc fetch fails,
         // otherwise the UI can get stuck and users will trigger requests while effectively
         // unauthenticated (leading to RLS errors like "new row violates row-level security").
         if (mounted) setAuthLoading(false)
       }
     }).catch(() => {
+      bootstrappedRef.current = true
       if (mounted) setAuthLoading(false)
     })
 
@@ -121,6 +124,12 @@ export function AuthProvider({ children }) {
       // BUG FIX: TOKEN_REFRESHED fires on every silent token renewal.
       // It does not change who the user is — skip redundant profile fetches.
       if (event === 'TOKEN_REFRESHED') return
+
+      // INITIAL_SESSION duplicates authGetSession bootstrap — skip extra profile fetches
+      if (event === 'INITIAL_SESSION' && bootstrappedRef.current) {
+        setAuthLoading(false)
+        return
+      }
 
       setUser(sessionUser)
 

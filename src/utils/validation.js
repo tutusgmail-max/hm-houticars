@@ -2,6 +2,7 @@
  * validation.js
  * Pure validation functions — no side effects, fully testable.
  */
+import { isAuthRateLimited } from './authRequestGuard'
 
 export function validateEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
@@ -68,13 +69,36 @@ export function hasErrors(errors) {
 
 /** Map Supabase error messages → user-friendly French text */
 export function parseAuthError(err) {
-  const msg = err?.message || ''
-  if (msg.includes('Invalid login credentials')) return 'Email ou mot de passe incorrect.'
-  if (msg.includes('already registered') || msg.includes('already been registered')) return 'Cet email est déjà utilisé.'
-  if (msg.includes('Email not confirmed')) return 'Veuillez confirmer votre email avant de vous connecter.'
-  if (msg.includes('Password should be')) return 'Le mot de passe doit contenir au moins 6 caractères.'
-  if (msg.includes('rate limit')) return 'Trop de tentatives. Réessayez dans quelques minutes.'
-  if (msg.includes('User not found')) return 'Aucun compte trouvé avec cet email.'
-  if (msg.includes('network')) return 'Erreur réseau. Vérifiez votre connexion.'
-  return msg || 'Une erreur inattendue est survenue.'
+  if (err?.code === 'AUTH_COOLDOWN') {
+    const sec = Math.ceil((err.waitMs || 1500) / 1000)
+    return `Un instant… Réessayez dans ${sec} seconde${sec > 1 ? 's' : ''}.`
+  }
+
+  const msg = (err?.message || err?.error_description || '').toLowerCase()
+
+  if (msg.includes('invalid login credentials') || msg.includes('invalid_credentials')) {
+    return 'Email ou mot de passe incorrect. Vérifiez vos identifiants.'
+  }
+  if (msg.includes('already registered') || msg.includes('already been registered') || msg.includes('user already registered')) {
+    return 'Cet email est déjà utilisé. Connectez-vous avec ce compte.'
+  }
+  if (msg.includes('email not confirmed')) {
+    return 'Compte trouvé — reconnectez-vous pour continuer.'
+  }
+  if (msg.includes('password should be') || msg.includes('password is too weak')) {
+    return 'Choisissez un mot de passe d’au moins 8 caractères.'
+  }
+  if (isAuthRateLimited(err)) {
+    return 'Beaucoup de demandes en peu de temps. Patientez 1 à 2 minutes, puis réessayez une seule fois.'
+  }
+  if (msg.includes('user not found')) return 'Aucun compte avec cet email. Créez un compte en quelques secondes.'
+  if (msg.includes('network') || msg.includes('fetch')) {
+    return 'Connexion instable. Vérifiez votre réseau et réessayez.'
+  }
+  if (msg.includes('signup is disabled')) return 'Inscription temporairement indisponible. Contactez-nous sur WhatsApp.'
+  if (msg.includes('invalid email')) return 'Adresse email invalide.'
+
+  const raw = err?.message || ''
+  if (!raw || raw.length > 120) return 'Une petite erreur est survenue. Réessayez calmement.'
+  return raw
 }

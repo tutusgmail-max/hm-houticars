@@ -35,7 +35,8 @@ const REQUIRED_DOCS = [
 
 const PENDING_KEY  = 'hmhouticars.pendingBooking.v3'
 const PREFILL_KEY  = 'hmhouticars.userPrefill.v1'
-const AUTH_MSG     = 'Veuillez créer un compte ou vous connecter pour continuer votre réservation.'
+const AUTH_MSG     = 'Dernière étape : créez un compte gratuit (30 s) pour confirmer votre réservation.'
+const AUTH_MSG_SOFT = 'Compte gratuit à la confirmation — choisissez vos dates d’abord.'
 
 const MONTHS_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
 const DAYS_FR   = ['Lu','Ma','Me','Je','Ve','Sa','Di']
@@ -382,7 +383,7 @@ function useAutoSave(userId, form, delay=1400) {
 // ─── BookingModal ─────────────────────────────────────────────────────────────
 
 export default function BookingModal() {
-  const { bookingModal, closeBooking, openReceipt, openAuth, addToast } = useApp()
+  const { bookingModal, closeBooking, openReceipt, openAuth, addToast, savePendingBooking } = useApp()
   const { user, profile, authLoading } = useAuth()
 
   const [step,     setStep]     = useState(0)
@@ -401,17 +402,16 @@ export default function BookingModal() {
 
   const { bookedDates, blockedDates, pendingDates, loading:availLoading, isRangeBlocked } = useCarAvailability(car?.id)
 
-  // Init on open
+  // Init on open — guests can browse dates; auth only required to confirm
   useEffect(() => {
     if (!bookingModal || authLoading) return
-    if (!user) { openAuth('login', AUTH_MSG); addToast(AUTH_MSG,'error'); return }
     const carId = bookingModal.car?.id
     const pending = carId ? loadSession(carId) : null
     setForm(pending ?? initForm(profile, user, bookingModal.prefStart, bookingModal.prefEnd))
     setStep(0); setErrors({}); setDocPrev({}); setLoading(false); setProgress('')
     fileRefs.current = {}
     if (!pending) clearSession()
-  }, [bookingModal, authLoading]) // eslint-disable-line
+  }, [bookingModal, authLoading, user]) // eslint-disable-line
 
   // Sync profile into form if profile loads after modal open
   useEffect(() => {
@@ -444,7 +444,7 @@ export default function BookingModal() {
     setErrors(p => ({...p,[key]:null,form:null}))
   }
 
-  const validate = () => {
+  const validateDatesAndContact = () => {
     const e = {}, today = todayStr()
     if (!form.start)                                      e.start    = 'Date de départ requise'
     else if (form.start < today)                          e.start    = 'Date dans le passé'
@@ -457,22 +457,51 @@ export default function BookingModal() {
     else if (!/^[+\d\s().-]{6,20}$/.test(form.whatsapp)) e.whatsapp = 'Numéro invalide'
     if (form.start && form.end && isRangeBlocked(form.start, form.end))
       e.start = e.end = "Ces dates sont déjà confirmées — choisissez d'autres dates"
-    for (const doc of REQUIRED_DOCS) if (!fileRefs.current[doc.key]) e[doc.key] = `${doc.label} requis`
     setErrors(e)
     return Object.keys(e).length === 0
   }
 
+  const validate = () => {
+    if (!validateDatesAndContact()) return false
+    const docErrors = {}
+    for (const doc of REQUIRED_DOCS) {
+      if (!fileRefs.current[doc.key]) docErrors[doc.key] = `${doc.label} requis`
+    }
+    if (Object.keys(docErrors).length) {
+      setErrors((p) => ({ ...p, ...docErrors }))
+      return false
+    }
+    return true
+  }
+
+  const promptAuthForBooking = (preferSignup = true) => {
+    saveSession(car.id, form)
+    savePendingBooking?.(car, form.start, form.end)
+    openAuth(preferSignup ? 'signup' : 'login', AUTH_MSG)
+  }
+
   const goNext = () => {
-    if (!user) { saveSession(car.id, form); openAuth('login', AUTH_MSG); return }
-    if (step === 1 && !validate()) return
-    setStep(p => Math.min(p+1, 2))
+    if (step === 0) {
+      if (!validateDatesAndContact()) return
+      setStep(1)
+      return
+    }
+    if (step === 1) {
+      if (!validateDatesAndContact()) return
+      if (!user) {
+        promptAuthForBooking(true)
+        return
+      }
+      if (!validate()) return
+      setStep(2)
+    }
   }
   const goBack = () => { setErrors({}); setStep(p => Math.max(p-1, 0)) }
 
   const confirm = async () => {
     // PRODUCTION FIX: prevent double-submit from fast double clicks / lag spikes
     if (loading) return
-    if (!user) { openAuth('login', AUTH_MSG); return }
+    if (!user) { promptAuthForBooking(true); return }
     if (!validate()) { setStep(1); return }
     if (isRangeBlocked(form.start, form.end)) {
       addToast('Ces dates sont désormais confirmées.','error')
@@ -557,6 +586,21 @@ export default function BookingModal() {
             {/* Right panel */}
             <div className="p-4 sm:p-7">
               <StepNav step={step} />
+
+              {!user && (
+                <div
+                  className="mb-5 flex flex-col gap-2 rounded-xl border border-gold/20 bg-gold/[0.06] px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <p className="text-xs leading-relaxed text-white/70">{AUTH_MSG_SOFT}</p>
+                  <button
+                    type="button"
+                    onClick={() => promptAuthForBooking(true)}
+                    className="shrink-0 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-gold transition hover:bg-gold/20"
+                  >
+                    Créer un compte rapide
+                  </button>
+                </div>
+              )}
 
               {errors.form && (
                 <div className="mb-5 flex items-start gap-3 rounded-xl border border-red-400/25 bg-red-400/10 p-4 text-sm text-red-200">

@@ -4,40 +4,52 @@
  * Components never import supabase directly — only this module.
  */
 import { supabase } from '../lib/supabase'
+import { normalizeAuthEmail, runAuthRequest } from '../utils/authRequestGuard'
 
 // ── Sign Up ─────────────────────────────────────────────────────────────────
 export async function authSignUp({ email, password, fullName, phone }) {
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      data: { full_name: fullName, phone },
-      // Email confirmation off in Supabase — users get immediate session access
-    },
-  })
-  if (error) throw error
+  const normalizedEmail = normalizeAuthEmail(email)
 
-  // Upsert profile row immediately (DB trigger also does this as fallback)
-  if (data.user) {
-    const { error: profileError } = await supabase.from('profiles').upsert({
-      id: data.user.id,
-      full_name: fullName,
-      phone,
-      email,
-      role: 'client',
-    }, { onConflict: 'id' })
-    if (profileError) {
-      console.warn('[authSignUp] profile upsert:', profileError.message)
+  return runAuthRequest('signUp', normalizedEmail, async () => {
+    const { data, error } = await supabase.auth.signUp({
+      email: normalizedEmail,
+      password,
+      options: {
+        data: { full_name: fullName, phone },
+        // Email confirmation off in Supabase — users get immediate session access
+      },
+    })
+    if (error) throw error
+
+    // Upsert profile row immediately (DB trigger also does this as fallback)
+    if (data.user) {
+      const { error: profileError } = await supabase.from('profiles').upsert({
+        id: data.user.id,
+        full_name: fullName,
+        phone,
+        email: normalizedEmail,
+        role: 'client',
+      }, { onConflict: 'id' })
+      if (profileError) {
+        console.warn('[authSignUp] profile upsert:', profileError.message)
+      }
     }
-  }
-  return data
+    return data
+  })
 }
 
 // ── Sign In ──────────────────────────────────────────────────────────────────
 export async function authSignIn({ email, password }) {
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-  if (error) throw error
-  return data
+  const normalizedEmail = normalizeAuthEmail(email)
+
+  return runAuthRequest('signIn', normalizedEmail, async () => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: normalizedEmail,
+      password,
+    })
+    if (error) throw error
+    return data
+  })
 }
 
 // ── Sign Out ─────────────────────────────────────────────────────────────────
@@ -48,22 +60,30 @@ export async function authSignOut() {
 
 // ── Forgot Password ──────────────────────────────────────────────────────────
 export async function authForgotPassword(email) {
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/reset-password`,
+  const normalizedEmail = normalizeAuthEmail(email)
+
+  return runAuthRequest('forgotPassword', normalizedEmail, async () => {
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    })
+    if (error) throw error
   })
-  if (error) throw error
 }
 
 // ── Reset Password (from email link) ─────────────────────────────────────────
 export async function authResetPassword(newPassword) {
-  const { error } = await supabase.auth.updateUser({ password: newPassword })
-  if (error) throw error
+  return runAuthRequest('resetPassword', 'session', async () => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword })
+    if (error) throw error
+  })
 }
 
 // ── Change Password (authenticated) ──────────────────────────────────────────
 export async function authChangePassword(newPassword) {
-  const { error } = await supabase.auth.updateUser({ password: newPassword })
-  if (error) throw error
+  return runAuthRequest('resetPassword', 'change', async () => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword })
+    if (error) throw error
+  })
 }
 
 // ── Get current session ───────────────────────────────────────────────────────

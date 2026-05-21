@@ -19,12 +19,17 @@ export default function ProtectedRoute({ children, adminOnly = false }) {
   const { openAuth } = useApp()
   const [adminRetry, setAdminRetry] = useState(0)
   const retryTimerRef = useRef(null)
+  const authPromptedRef = useRef(false)
 
-  // FIX: trigger auth modal via effect, not during render
+  // FIX: trigger auth modal via effect, not during render (once per visit)
   useEffect(() => {
-    if (!authLoading && !user) {
-      openAuth('login')
+    if (authLoading || user) {
+      if (user) authPromptedRef.current = false
+      return
     }
+    if (authPromptedRef.current) return
+    authPromptedRef.current = true
+    openAuth('login')
   }, [authLoading, user, openAuth])
 
   // PRODUCTION FIX:

@@ -93,17 +93,9 @@ export function AppProvider({ children }) {
       }
     }
 
+    // Guest-first: open booking immediately; account only required to confirm
     if (!authenticated) {
       savePendingBooking(car, prefStart, prefEnd)
-      setAuthNotice(BOOKING_AUTH_MESSAGE)
-      setAuthModal('login')
-      setToasts((p) => {
-        if (p.length >= 5) return p // BUG FIX: cap concurrent toasts
-        const id = uid()
-        setTimeout(() => setToasts((q) => q.filter((t) => t.id !== id)), 4500)
-        return [...p, { id, msg: BOOKING_AUTH_MESSAGE, type: 'error' }]
-      })
-      return
     }
 
     setBookingModal({ car, prefStart, prefEnd })
@@ -150,7 +142,7 @@ export function AppProvider({ children }) {
   return (
     <AppContext.Provider value={{
       activeSection, scrollTo,
-      bookingModal, openBooking, closeBooking, resumePendingBooking,
+      bookingModal, openBooking, closeBooking, savePendingBooking, resumePendingBooking,
       receipt, openReceipt, closeReceipt,
       authModal, authNotice, openAuth, closeAuth,
       toasts, addToast, removeToast,
