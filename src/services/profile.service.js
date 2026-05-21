@@ -3,6 +3,8 @@
  * All profile-related Supabase calls in one place.
  */
 import { supabase } from '../lib/supabase'
+import { authSignOut } from './auth.service'
+import { logAuthError } from '../utils/authDebug'
 
 /**
  * Fetch the profile row for the current user.
@@ -29,10 +31,10 @@ export async function fetchProfile(userId, sessionUser = null) {
         id: userId,
         email: sessionUser.email ?? null,
         full_name: sessionUser.user_metadata?.full_name ?? sessionUser.user_metadata?.name ?? null,
-        phone: sessionUser.user_metadata?.phone ?? null,
-        // Do NOT auto-escalate. Default to client.
         role: 'client',
       }
+      const metaPhone = sessionUser.user_metadata?.phone
+      if (metaPhone) payload.phone = metaPhone
 
       // Use INSERT (not UPSERT) to avoid accidentally overriding an existing role.
       const { data: created, error: createErr } = await supabase
@@ -42,10 +44,13 @@ export async function fetchProfile(userId, sessionUser = null) {
         .single()
 
       if (!createErr) return created
-      // If insert failed for any reason, fall through to original error.
-    } catch (_) {}
+      logAuthError('profile.insert', createErr)
+    } catch (createEx) {
+      logAuthError('profile.insert', createEx)
+    }
   }
 
+  logAuthError('profile.fetch', error)
   throw error
 }
 
@@ -83,6 +88,5 @@ export async function uploadAvatar(userId, file) {
 
 export async function deleteUserAccount(userId) {
   await supabase.from('profiles').delete().eq('id', userId)
-  const { error } = await supabase.auth.signOut()
-  if (error) throw error
+  await authSignOut()
 }

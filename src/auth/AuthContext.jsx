@@ -155,7 +155,8 @@ export function AuthProvider({ children }) {
       }
 
       if (sessionUser) {
-        const refreshProfile = event === 'SIGNED_IN' || event === 'USER_UPDATED'
+        const refreshProfile = event === 'USER_UPDATED'
+          || (event === 'SIGNED_IN' && sessionUser.id !== userIdRef.current)
         applySessionRef.current(sessionUser, { refreshProfile })
       } else {
         applySessionRef.current(null)

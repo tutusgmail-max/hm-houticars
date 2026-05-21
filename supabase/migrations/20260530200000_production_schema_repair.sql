@@ -1,4 +1,4 @@
--- HM Houti Cars — Production schema repair (cmoioidgxealxfirkssc)
+-- HM Houti Cars — Production schema repair (ertdqfavrkomikszagtc)
 -- Idempotent. Preserves data. Fixes PGRST200 profiles join + missing notifications.
 
 -- ─── 1) Helper: is_admin() ───────────────────────────────────────────────────

@@ -1,20 +1,46 @@
 /**
- * Auth request guard — in-flight dedupe only (double-click / StrictMode).
- * No artificial cooldowns, retries, or post-error blocking.
+ * Central auth request gate — ONE Supabase auth HTTP operation at a time.
+ * No automatic retries. 429 sets a cooldown; duplicates are rejected or coalesced.
  */
 
-const inflight = new Map()
-const completedAt = new Map()
-
-/** Block rapid repeat of the same failed/successful auth action (anti-hammer, no server call) */
-const MIN_REPEAT_MS = 2000
+const inflightByKey = new Map()
+let queueTail = Promise.resolve()
+let rateLimitedUntil = 0
 
 export function normalizeAuthEmail(email) {
   return (email || '').trim().toLowerCase()
 }
 
-/** True only for real Supabase / HTTP 429 rate-limit responses */
+function parseCooldownSeconds(err) {
+  const msg = err?.message || ''
+  const m = msg.match(/after\s+(\d+)\s+seconds?/i)
+  if (m) return Math.min(120, Math.max(1, parseInt(m[1], 10)))
+  return 60
+}
+
+/** Called when Supabase returns a rate-limit error — blocks further auth HTTP until cooldown ends */
+export function markAuthRateLimitedFromError(err) {
+  if (!isAuthRateLimited(err)) return
+  const sec = parseCooldownSeconds(err)
+  rateLimitedUntil = Math.max(rateLimitedUntil, Date.now() + sec * 1000)
+}
+
+export function isAuthGloballyBlocked() {
+  return Date.now() < rateLimitedUntil
+}
+
+export function getAuthCooldownRemainingMs() {
+  return Math.max(0, rateLimitedUntil - Date.now())
+}
+
+export function getAuthBlockedMessage() {
+  const sec = Math.max(1, Math.ceil(getAuthCooldownRemainingMs() / 1000))
+  return `Limite de sécurité Supabase. Réessayez dans ${sec} s (ou utilisez Connexion si le compte existe déjà).`
+}
+
 export function isAuthRateLimited(err) {
+  if (err?.code === 'AUTH_RATE_LIMIT_COOLDOWN') return true
+
   const status = err?.status ?? err?.statusCode
   if (status === 429) return true
 
@@ -27,33 +53,46 @@ export function isAuthRateLimited(err) {
     || msg.includes('over_request_rate_limit')
     || msg.includes('email rate limit exceeded')
     || msg.includes('too many requests')
+    || msg.includes('for security purposes')
+    || msg.includes('only request this after')
   )
 }
 
+function rejectIfBlocked() {
+  if (!isAuthGloballyBlocked()) return
+  const err = new Error(getAuthBlockedMessage())
+  err.code = 'AUTH_RATE_LIMIT_COOLDOWN'
+  throw err
+}
+
 /**
- * One in-flight request per action+email. Concurrent calls share the same promise.
+ * Queue exactly one auth HTTP call at a time across the whole app.
+ * Same action+email while in-flight returns the same promise (no duplicate HTTP).
  */
 export async function runAuthRequest(action, emailKey, fn) {
-  const key = `${action}:${normalizeAuthEmail(emailKey) || '_anonymous'}`
+  rejectIfBlocked()
 
-  if (inflight.has(key)) {
-    return inflight.get(key)
+  const dedupeKey = `${action}:${normalizeAuthEmail(emailKey) || '_global'}`
+  if (inflightByKey.has(dedupeKey)) {
+    return inflightByKey.get(dedupeKey)
   }
 
-  const elapsed = Date.now() - (completedAt.get(key) || 0)
-  if (elapsed < MIN_REPEAT_MS) {
-    const err = new Error(`AUTH_DEDUPE: ${action} déjà envoyé — attendez ${Math.ceil((MIN_REPEAT_MS - elapsed) / 1000)}s`)
-    err.code = 'AUTH_DEDUPE'
-    throw err
-  }
+  const task = queueTail.then(async () => {
+    rejectIfBlocked()
+    try {
+      return await fn()
+    } catch (err) {
+      markAuthRateLimitedFromError(err)
+      throw err
+    }
+  })
 
-  const promise = Promise.resolve()
-    .then(fn)
-    .finally(() => {
-      completedAt.set(key, Date.now())
-      inflight.delete(key)
-    })
+  queueTail = task.catch(() => {})
 
-  inflight.set(key, promise)
-  return promise
+  const tracked = task.finally(() => {
+    inflightByKey.delete(dedupeKey)
+  })
+
+  inflightByKey.set(dedupeKey, tracked)
+  return tracked
 }

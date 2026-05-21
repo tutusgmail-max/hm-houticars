@@ -74,6 +74,18 @@ function shouldDetectSessionInUrl() {
   return path === '/reset-password' || window.location.hash.includes('access_token')
 }
 
+if (import.meta.env.DEV) {
+  const envRef = getSupabaseProjectRefFromUrl(supabaseUrl)
+  const keyRefDbg = decodeJwtPayload(supabaseAnonKey)?.ref
+  console.info('[Supabase env]', {
+    VITE_SUPABASE_URL: supabaseUrl,
+    projectRef: envRef,
+    anonKeyRef: keyRefDbg,
+    refsMatch: !keyRefDbg || keyRefDbg === envRef,
+    expectedRef: 'ertdqfavrkomikszagtc',
+  })
+}
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession:     true,

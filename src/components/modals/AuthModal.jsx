@@ -24,7 +24,12 @@ import {
   hasErrors,
   parseAuthError,
 } from '../../utils/validation'
+import { formatAuthErrorForUi, isAuthDebug } from '../../utils/authDebug'
 import PasswordInput from '../auth/PasswordInput'
+import {
+  getAuthCooldownRemainingMs,
+  isAuthGloballyBlocked,
+} from '../../utils/authRequestGuard'
 
 const MODES = { login: 'login', signup: 'signup', forgot: 'forgot', sent: 'sent' }
 
@@ -96,6 +101,8 @@ export default function AuthModal() {
   }, [authModal])
 
   const [loading, setLoading] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [cooldownMs, setCooldownMs] = useState(0)
   const [errors, setErrors] = useState({})
   const [form, setForm] = useState(() => emptyForm())
   const [sentEmail, setSentEmail] = useState('')
@@ -117,15 +124,24 @@ export default function AuthModal() {
     if (authModal) setTimeout(() => firstInputRef.current?.focus(), 150)
   }, [authModal, mode])
 
+  useEffect(() => {
+    if (!authModal) return undefined
+    const tick = () => setCooldownMs(getAuthCooldownRemainingMs())
+    tick()
+    const id = window.setInterval(tick, 500)
+    return () => clearInterval(id)
+  }, [authModal])
+
   const switchMode = useCallback((next) => {
-    if (loading) return
+    if (loading || isSubmitting) return
     submitGenerationRef.current += 1
     setMode(next)
     setErrors({})
     setForm(emptyForm())
-  }, [loading])
+  }, [loading, isSubmitting])
 
-  const isSubmitDisabled = loading || submitCompletedRef.current
+  const isCooldownActive = cooldownMs > 0 || isAuthGloballyBlocked()
+  const isSubmitDisabled = loading || isSubmitting || isCooldownActive || submitCompletedRef.current
 
   const releaseSubmitLock = useCallback(() => {
     window.setTimeout(() => {
@@ -141,7 +157,9 @@ export default function AuthModal() {
   const handleSubmit = async (e) => {
     e?.preventDefault?.()
     e?.stopPropagation?.()
-    if (submitLockRef.current || submitCompletedRef.current || loading) return
+    if (submitLockRef.current || submitCompletedRef.current || loading || isSubmitting || isAuthGloballyBlocked()) {
+      return
+    }
 
     let errs = {}
     if (mode === MODES.login)  errs = validateLoginForm(form)
@@ -153,6 +171,7 @@ export default function AuthModal() {
     const generation = ++submitGenerationRef.current
     const submitMode = mode
     submitLockRef.current = true
+    setIsSubmitting(true)
     setLoading(true)
     setErrors((p) => ({ ...p, form: undefined }))
 
@@ -192,8 +211,8 @@ export default function AuthModal() {
       }
     } catch (err) {
       if (generation !== submitGenerationRef.current) return
-      const friendly = parseAuthError(err)
-      setErrors({ form: friendly })
+      const friendly = formatAuthErrorForUi(err, parseAuthError)
+      setErrors({ form: friendly, formDebug: isAuthDebug() ? JSON.stringify(err, Object.getOwnPropertyNames(err)) : undefined })
 
       const alreadyUsed = (err?.message || '').toLowerCase().includes('already')
       if (alreadyUsed && submitMode === MODES.signup) {
@@ -207,8 +226,18 @@ export default function AuthModal() {
     } finally {
       if (generation === submitGenerationRef.current) {
         setLoading(false)
-        releaseSubmitLock()
+        setIsSubmitting(false)
+        setCooldownMs(getAuthCooldownRemainingMs())
+        if (!isAuthGloballyBlocked()) {
+          releaseSubmitLock()
+        }
       }
+    }
+  }
+
+  const blockEnterResubmit = (e) => {
+    if (e.key === 'Enter' && (isSubmitting || loading || isCooldownActive)) {
+      e.preventDefault()
     }
   }
 
@@ -325,14 +354,26 @@ export default function AuthModal() {
                 style={{ border: '1px solid rgba(251,191,36,0.25)', background: 'rgba(251,191,36,0.08)' }}
               >
                 {errors.form}
+                {errors.formDebug && (
+                  <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-all text-[10px] text-white/50 font-mono">
+                    {errors.formDebug}
+                  </pre>
+                )}
               </motion.div>
+            )}
+
+            {isCooldownActive && (
+              <p className="mb-4 text-center text-xs text-amber-200/90">
+                Réessayez dans {Math.max(1, Math.ceil(cooldownMs / 1000))} s
+              </p>
             )}
 
             <form
               ref={formRef}
               noValidate
               onSubmit={handleSubmit}
-              className={loading ? 'pointer-events-none opacity-95' : ''}
+              onKeyDown={blockEnterResubmit}
+              className={isSubmitDisabled ? 'pointer-events-none opacity-95' : ''}
             >
             <AnimatePresence mode="wait">
               <motion.div

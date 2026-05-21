@@ -2,13 +2,14 @@
  * User-friendly Supabase / PostgREST error messages (French).
  */
 import { parseAuthError } from './validation'
-import { isAuthRateLimited } from './authRequestGuard'
+import { isAuthRateLimited, getAuthBlockedMessage, isAuthGloballyBlocked } from './authRequestGuard'
+import { formatAuthErrorForUi } from './authDebug'
 
 export function parseSupabaseError(err) {
   if (!err) return 'Une erreur inattendue est survenue.'
 
-  if (isAuthRateLimited(err)) {
-    return parseAuthError(err)
+  if (isAuthGloballyBlocked() || isAuthRateLimited(err)) {
+    return isAuthGloballyBlocked() ? getAuthBlockedMessage() : parseAuthError(err)
   }
 
   const code = err?.code || ''
@@ -33,5 +34,5 @@ export function parseSupabaseError(err) {
     return 'Connexion impossible. Vérifiez votre réseau et la configuration Supabase.'
   }
 
-  return parseAuthError(err)
+  return formatAuthErrorForUi(err, parseAuthError)
 }

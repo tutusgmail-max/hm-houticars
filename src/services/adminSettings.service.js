@@ -15,6 +15,7 @@
  * Until that migration runs, the service degrades to localStorage-only.
  */
 import { supabase } from '../lib/supabase'
+import { authGetUser } from './auth.service'
 
 const STORAGE_KEY = 'hm_admin_settings'
 
@@ -55,7 +56,7 @@ function persistLocally(settings) {
  */
 export async function loadAdminSettingsRemote() {
   try {
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await authGetUser()
     if (!user) return loadAdminSettings()
 
     const { data, error } = await supabase
@@ -81,7 +82,7 @@ export async function loadAdminSettingsRemote() {
 export async function saveAdminSettings(settings) {
   const merged = persistLocally(settings)
   try {
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await authGetUser()
     if (user) {
       // Silently ignore if admin_settings column doesn't exist yet
       await supabase

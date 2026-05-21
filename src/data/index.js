@@ -1,6 +1,6 @@
 // ─── Cars ────────────────────────────────────────────────────────────────────
 const SUPABASE_CAR_IMG =
-  'https://cmoioidgxealxfirkssc.supabase.co/storage/v1/object/public/image/houti%20cars'
+  'https://ertdqfavrkomikszagtc.supabase.co/storage/v1/object/public/image/houti%20cars'
 
 export const DACIA_SANDERO_IMAGE =
   'https://ertdqfavrkomikszagtc.supabase.co/storage/v1/object/public/voiture/houti%20cars/dacia%20sandero.jpg'
