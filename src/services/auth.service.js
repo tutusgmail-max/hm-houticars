@@ -1,9 +1,13 @@
 /**
- * auth.service.js — all Supabase Auth HTTP goes through runAuthRequest (global queue).
+ * auth.service.js — single gateway for Supabase Auth (queued, deduped, timeout-safe).
  */
 import { supabase } from '../lib/supabase'
 import { normalizeAuthEmail, runAuthRequest } from '../utils/authRequestGuard'
 import { logAuthError } from '../utils/authDebug'
+import { withAuthTimeout, AuthTimeoutError } from '../utils/authTimeout'
+import { validateEmail } from '../utils/validation'
+
+const AUTH_TIMEOUT_MS = 25_000
 
 let authSubscription = null
 let authListenerCallback = null
@@ -27,9 +31,14 @@ export function authOnChange(callback) {
   }
 }
 
-/** Prefer listener session; only call when necessary */
+async function runTimedAuth(action, emailKey, fn) {
+  return runAuthRequest(action, emailKey, () =>
+    withAuthTimeout(AUTH_TIMEOUT_MS, fn),
+  )
+}
+
 export async function authGetSession() {
-  return runAuthRequest('getSession', '_session', async () => {
+  return runTimedAuth('getSession', '_session', async () => {
     const { data: { session }, error } = await supabase.auth.getSession()
     if (error) throw error
     return session
@@ -37,30 +46,59 @@ export async function authGetSession() {
 }
 
 export async function authGetUser() {
-  return runAuthRequest('getUser', '_user', async () => {
+  return runTimedAuth('getUser', '_user', async () => {
     const { data: { user }, error } = await supabase.auth.getUser()
     if (error) throw error
     return user
   })
 }
 
+/**
+ * Production signup — one HTTP call, timeout, metadata for profile trigger.
+ * @returns {{ user, session }} Supabase signUp data
+ */
 export async function authSignUp({ email, password, fullName, phone }) {
   const normalizedEmail = normalizeAuthEmail(email)
+  const pwd = (password || '').trim()
+
+  if (!validateEmail(normalizedEmail)) {
+    const err = new Error('invalid email')
+    err.code = 'email_address_invalid'
+    throw err
+  }
+  if (!pwd || pwd.length < 8) {
+    const err = new Error('weak password')
+    err.code = 'weak_password'
+    throw err
+  }
+
   const displayName = (fullName || '').trim() || normalizedEmail.split('@')[0] || 'Client'
   const displayPhone = (phone || '').trim()
 
-  return runAuthRequest('signUp', normalizedEmail, async () => {
+  return runTimedAuth('signUp', normalizedEmail, async () => {
     try {
       const { data, error } = await supabase.auth.signUp({
         email: normalizedEmail,
-        password,
+        password: pwd,
         options: {
           data: { full_name: displayName, phone: displayPhone },
         },
       })
+
       if (error) throw error
+
+      if (!data?.user && !data?.session) {
+        const empty = new Error('signup empty response')
+        empty.code = 'SIGNUP_EMPTY'
+        throw empty
+      }
+
       return data
     } catch (err) {
+      if (err instanceof AuthTimeoutError) {
+        logAuthError('signUp.timeout', err)
+        throw err
+      }
       logAuthError('signUp', err)
       throw err
     }
@@ -70,7 +108,7 @@ export async function authSignUp({ email, password, fullName, phone }) {
 export async function authSignIn({ email, password }) {
   const normalizedEmail = normalizeAuthEmail(email)
 
-  return runAuthRequest('signIn', normalizedEmail, async () => {
+  return runTimedAuth('signIn', normalizedEmail, async () => {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email: normalizedEmail,
@@ -86,7 +124,7 @@ export async function authSignIn({ email, password }) {
 }
 
 export async function authSignOut() {
-  return runAuthRequest('signOut', '_global', async () => {
+  return runTimedAuth('signOut', '_global', async () => {
     const { error } = await supabase.auth.signOut()
     if (error) throw error
   })
@@ -95,7 +133,7 @@ export async function authSignOut() {
 export async function authForgotPassword(email) {
   const normalizedEmail = normalizeAuthEmail(email)
 
-  return runAuthRequest('forgotPassword', normalizedEmail, async () => {
+  return runTimedAuth('forgotPassword', normalizedEmail, async () => {
     const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
       redirectTo: `${window.location.origin}/reset-password`,
     })
@@ -104,14 +142,14 @@ export async function authForgotPassword(email) {
 }
 
 export async function authResetPassword(newPassword) {
-  return runAuthRequest('resetPassword', 'session', async () => {
+  return runTimedAuth('resetPassword', 'session', async () => {
     const { error } = await supabase.auth.updateUser({ password: newPassword })
     if (error) throw error
   })
 }
 
 export async function authChangePassword(newPassword) {
-  return runAuthRequest('changePassword', 'change', async () => {
+  return runTimedAuth('changePassword', 'change', async () => {
     const { error } = await supabase.auth.updateUser({ password: newPassword })
     if (error) throw error
   })

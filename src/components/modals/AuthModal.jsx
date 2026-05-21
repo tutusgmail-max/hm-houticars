@@ -29,8 +29,8 @@ import {
 import { logAuthError } from '../../utils/authDebug'
 import PasswordInput from '../auth/PasswordInput'
 import {
-  getAuthCooldownRemainingMs,
   isAuthGloballyBlocked,
+  getAuthBlockedMessage,
 } from '../../utils/authRequestGuard'
 
 const MODES = { login: 'login', signup: 'signup', forgot: 'forgot', sent: 'sent' }
@@ -104,7 +104,6 @@ export default function AuthModal() {
 
   const [loading, setLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [cooldownMs, setCooldownMs] = useState(0)
   const [errors, setErrors] = useState({})
   const [form, setForm] = useState(() => emptyForm())
   const [sentEmail, setSentEmail] = useState('')
@@ -126,14 +125,6 @@ export default function AuthModal() {
     if (authModal) setTimeout(() => firstInputRef.current?.focus(), 150)
   }, [authModal, mode])
 
-  useEffect(() => {
-    if (!authModal) return undefined
-    const tick = () => setCooldownMs(getAuthCooldownRemainingMs())
-    tick()
-    const id = window.setInterval(tick, 500)
-    return () => clearInterval(id)
-  }, [authModal])
-
   const switchMode = useCallback((next) => {
     if (loading || isSubmitting) return
     submitGenerationRef.current += 1
@@ -142,7 +133,7 @@ export default function AuthModal() {
     setForm(emptyForm())
   }, [loading, isSubmitting])
 
-  const isCooldownActive = cooldownMs > 0 || isAuthGloballyBlocked()
+  const isCooldownActive = isAuthGloballyBlocked()
   const isSubmitDisabled = loading || isSubmitting || isCooldownActive || submitCompletedRef.current
 
   const releaseSubmitLock = useCallback(() => {
@@ -243,7 +234,6 @@ export default function AuthModal() {
       if (generation === submitGenerationRef.current) {
         setLoading(false)
         setIsSubmitting(false)
-        setCooldownMs(getAuthCooldownRemainingMs())
         if (!isAuthGloballyBlocked()) {
           releaseSubmitLock()
         }
@@ -375,7 +365,7 @@ export default function AuthModal() {
 
             {isCooldownActive && (
               <p className="mb-4 text-center text-xs text-amber-200/90">
-                Réessayez dans {Math.max(1, Math.ceil(cooldownMs / 1000))} s
+                {getAuthBlockedMessage()}
               </p>
             )}
 
@@ -437,7 +427,7 @@ export default function AuthModal() {
                 {/* Password */}
                 {(mode === MODES.login || mode === MODES.signup) && (
                   <PremiumField
-                    label={mode === MODES.signup ? 'Mot de passe (6+ caractères)' : 'Mot de passe'}
+                    label={mode === MODES.signup ? 'Mot de passe (8+ lettres et chiffres)' : 'Mot de passe'}
                     error={errors.password}
                     icon={FiLock}
                     delay={0.08}

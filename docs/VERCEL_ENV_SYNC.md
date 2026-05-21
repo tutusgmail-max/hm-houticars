@@ -23,3 +23,14 @@ npx vercel env add VITE_SUPABASE_ANON_KEY production
 ```
 
 Never add `service_role` to Vercel frontend env.
+
+## Supabase Dashboard (required for signup)
+
+| Setting | Value |
+|---------|--------|
+| **Auth → Providers → Email** | Enabled |
+| **Confirm email** | **OFF** (instant session) |
+| **Site URL** | Your Vercel production URL |
+| **Redirect URLs** | `https://YOUR_DOMAIN/**`, `http://localhost:5173/**`, `http://localhost:5174/**`, `*/reset-password` |
+
+Project ref: **ertdqfavrkomikszagtc** — URL must be `https://ertdqfavrkomikszagtc.supabase.co`

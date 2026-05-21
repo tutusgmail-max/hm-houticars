@@ -7,6 +7,10 @@ const inflightByKey = new Map()
 let queueTail = Promise.resolve()
 let rateLimitedUntil = 0
 
+/** Client-side anti-spam: min gap between signUp for the same email (avoids hitting Supabase limits) */
+const MIN_SIGNUP_GAP_MS = 4_000
+const lastSignupAtByEmail = new Map()
+
 export function normalizeAuthEmail(email) {
   return (email || '').trim().toLowerCase()
 }
@@ -14,11 +18,10 @@ export function normalizeAuthEmail(email) {
 function parseCooldownSeconds(err) {
   const msg = err?.message || ''
   const m = msg.match(/after\s+(\d+)\s+seconds?/i)
-  if (m) return Math.min(120, Math.max(1, parseInt(m[1], 10)))
-  return 60
+  if (m) return Math.min(300, Math.max(30, parseInt(m[1], 10)))
+  return 90
 }
 
-/** Called when Supabase returns a rate-limit error — blocks further auth HTTP until cooldown ends */
 export function markAuthRateLimitedFromError(err) {
   if (!isAuthRateLimited(err)) return
   const sec = parseCooldownSeconds(err)
@@ -34,18 +37,19 @@ export function getAuthCooldownRemainingMs() {
 }
 
 export function getAuthBlockedMessage() {
-  const sec = Math.max(1, Math.ceil(getAuthCooldownRemainingMs() / 1000))
-  return `Trop de tentatives. Réessayez dans ${sec} seconde${sec > 1 ? 's' : ''}.`
+  return 'Trop de tentatives. Réessayez dans quelques minutes.'
 }
 
 export function isAuthRateLimited(err) {
-  if (err?.code === 'AUTH_RATE_LIMIT_COOLDOWN') return true
+  if (err?.code === 'AUTH_RATE_LIMIT_COOLDOWN' || err?.code === 'AUTH_SIGNUP_TOO_FAST') return true
 
   const status = err?.status ?? err?.statusCode
   if (status === 429) return true
 
   const code = String(err?.code || '').toLowerCase()
-  if (code === 'over_request_rate_limit' || code === '429') return true
+  if (code === 'over_request_rate_limit' || code === 'over_email_send_rate_limit' || code === '429') {
+    return true
+  }
 
   const msg = (err?.message || err?.error_description || '').toLowerCase()
   return (
@@ -65,12 +69,33 @@ function rejectIfBlocked() {
   throw err
 }
 
+function rejectSignupTooFast(emailKey) {
+  const email = normalizeAuthEmail(emailKey)
+  if (!email) return
+  const last = lastSignupAtByEmail.get(email) || 0
+  const elapsed = Date.now() - last
+  if (elapsed < MIN_SIGNUP_GAP_MS) {
+    const err = new Error('Trop de tentatives. Réessayez dans quelques minutes.')
+    err.code = 'AUTH_SIGNUP_TOO_FAST'
+    throw err
+  }
+}
+
+function markSignupAttempt(emailKey) {
+  const email = normalizeAuthEmail(emailKey)
+  if (email) lastSignupAtByEmail.set(email, Date.now())
+}
+
 /**
  * Queue exactly one auth HTTP call at a time across the whole app.
  * Same action+email while in-flight returns the same promise (no duplicate HTTP).
  */
 export async function runAuthRequest(action, emailKey, fn) {
   rejectIfBlocked()
+
+  if (action === 'signUp') {
+    rejectSignupTooFast(emailKey)
+  }
 
   const dedupeKey = `${action}:${normalizeAuthEmail(emailKey) || '_global'}`
   if (inflightByKey.has(dedupeKey)) {
@@ -79,8 +104,11 @@ export async function runAuthRequest(action, emailKey, fn) {
 
   const task = queueTail.then(async () => {
     rejectIfBlocked()
+    if (action === 'signUp') rejectSignupTooFast(emailKey)
     try {
-      return await fn()
+      const result = await fn()
+      if (action === 'signUp') markSignupAttempt(emailKey)
+      return result
     } catch (err) {
       markAuthRateLimitedFromError(err)
       throw err

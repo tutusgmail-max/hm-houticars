@@ -2,7 +2,12 @@
  * validation.js
  * Pure validation functions — no side effects, fully testable.
  */
-export { parseAuthError, AUTH_MESSAGES, isEmailAlreadyRegistered } from './authErrors'
+export {
+  parseAuthError,
+  AUTH_MESSAGES,
+  isEmailAlreadyRegistered,
+  isNetworkError,
+} from './authErrors'
 
 export function validateEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
@@ -16,9 +21,10 @@ export function validatePassword(password) {
   return password.length >= 8
 }
 
-/** Signup minimum — matches Supabase default (6) for low friction */
+/** Signup — 8+ chars with letters and digits */
 export function validatePasswordSignup(password) {
-  return (password || '').length >= 6
+  const p = password || ''
+  return p.length >= 8 && /[a-zA-Z]/.test(p) && /\d/.test(p)
 }
 
 export function validateLoginForm({ email, password }) {
@@ -51,8 +57,8 @@ export function validateSignupFormSimple({ fullName, phone, email, password }) {
 /** Ultra-low friction — email + password only; name/phone optional */
 export function validateSignupFormMinimal({ fullName, phone, email, password }) {
   const errors = {}
-  if (!validateEmail(email || '')) errors.email = 'Email invalide'
-  if (!validatePasswordSignup(password)) errors.password = 'Minimum 6 caractères'
+  if (!validateEmail(email || '')) errors.email = 'Adresse email invalide'
+  if (!validatePasswordSignup(password)) errors.password = '8 caractères minimum, avec lettres et chiffres'
   if (fullName?.trim() && fullName.trim().length < 2) errors.fullName = 'Nom trop court'
   if (phone?.trim() && !validatePhone(phone)) errors.phone = 'Numéro invalide'
   return errors
