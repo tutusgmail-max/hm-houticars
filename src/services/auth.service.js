@@ -12,6 +12,7 @@ export async function authSignUp({ email, password, fullName, phone }) {
     password,
     options: {
       data: { full_name: fullName, phone },
+      // Email confirmation off in Supabase — users get immediate session access
     },
   })
   if (error) throw error

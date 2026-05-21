@@ -32,6 +32,16 @@ export function validateSignupForm({ fullName, phone, email, password, password2
   return errors
 }
 
+/** Simplified signup — no password confirmation (lower friction) */
+export function validateSignupFormSimple({ fullName, phone, email, password }) {
+  const errors = {}
+  if (!fullName?.trim()) errors.fullName = 'Nom complet requis'
+  if (!validatePhone(phone || '')) errors.phone = 'Numéro de téléphone invalide (ex: +212 6XX XXX XXX)'
+  if (!validateEmail(email || '')) errors.email = 'Adresse email invalide'
+  if (!validatePassword(password || '')) errors.password = 'Minimum 8 caractères requis'
+  return errors
+}
+
 export function validateForgotForm({ email }) {
   const errors = {}
   if (!validateEmail(email)) errors.email = 'Adresse email invalide'

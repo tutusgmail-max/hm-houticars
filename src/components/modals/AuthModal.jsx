@@ -1,56 +1,92 @@
 /**
- * AuthModal.jsx  —  v3
+ * AuthModal.jsx — v4 PREMIUM
  *
- * BUGS FIXED vs original:
- * 1. mode state initialized from authModal prop but never synced when prop changes
- *    → user opening modal in "signup" mode got "login" form if modal was previously shown.
- * 2. No "email sent" confirmation screen — user had no feedback after forgot-password.
- * 3. validate() used String.includes('@') instead of proper regex — "a@" passed validation.
- * 4. Error messages showed raw Supabase English strings to French-speaking users.
- * 5. No accessible keyboard trap — Tab key escaped modal.
- * 6. No aria-* attributes — screen reader unfriendly.
- * 7. Form state not reset on mode change — leaked password between login/signup.
+ * CHANGES vs v3:
+ * 1. No email confirmation required — signup logs user in immediately
+ * 2. Full glassmorphism redesign matching luxury HM aesthetic
+ * 3. Mobile-first with improved spacing, typography, and touch targets
+ * 4. Premium animated gradient background + shimmer effects
+ * 5. Smooth staggered field animations
+ * 6. Removed password2 confirm field (friction reduction)
+ * 7. Guest reservation CTA in footer
+ * 8. Inline strength indicator for password
+ * 9. Premium CTA buttons with glow effects
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiX, FiMail, FiUser, FiPhone } from 'react-icons/fi'
+import { FiX, FiMail, FiUser, FiPhone, FiLock, FiArrowRight } from 'react-icons/fi'
 import { useApp } from '../../context/AppContext'
 import { authSignIn, authSignUp, authForgotPassword } from '../../services/auth.service'
 import {
   validateLoginForm,
-  validateSignupForm,
+  validateSignupFormSimple,
   validateForgotForm,
   hasErrors,
   parseAuthError,
 } from '../../utils/validation'
-import AuthField from '../auth/AuthField'
 import PasswordInput from '../auth/PasswordInput'
-import AuthButton from '../auth/AuthButton'
 
 const MODES = { login: 'login', signup: 'signup', forgot: 'forgot', sent: 'sent' }
 
-const TITLES = {
-  login:  'Connexion',
-  signup: 'Créer un compte',
-  forgot: 'Mot de passe oublié',
-  sent:   'Email envoyé !',
-}
-
-const SUBTITLES = {
-  login:  'Accédez à votre espace client premium.',
-  signup: 'Rejoignez HM Houti Cars. CIN et permis seront demandés uniquement lors de votre première réservation.',
-  forgot: 'Saisissez votre email pour recevoir un lien de réinitialisation.',
-  sent:   null,
-}
-
 function emptyForm() {
-  return { fullName: '', phone: '', email: '', password: '', password2: '' }
+  return { fullName: '', phone: '', email: '', password: '' }
+}
+
+function PremiumField({ label, error, icon: Icon, children, delay = 0 }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, delay }}
+    >
+      <label className="block text-[10px] font-bold text-white/40 uppercase tracking-[2px] mb-1.5">
+        {label}
+      </label>
+      <div className="relative">
+        {Icon && (
+          <Icon className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gold/50 text-sm pointer-events-none z-10" />
+        )}
+        {children}
+      </div>
+      <AnimatePresence>
+        {error && (
+          <motion.p
+            key="err"
+            initial={{ opacity: 0, y: -4, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: 'auto' }}
+            exit={{ opacity: 0, y: -4, height: 0 }}
+            transition={{ duration: 0.15 }}
+            className="text-red-400/90 text-[11px] mt-1.5 flex items-center gap-1 pl-1"
+          >
+            <span className="text-red-400">⚠</span> {error}
+          </motion.p>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  )
+}
+
+function PremiumInput({ icon, error, inputRef, ...props }) {
+  return (
+    <input
+      ref={inputRef}
+      {...props}
+      className={`
+        w-full px-4 py-3.5 rounded-xl text-sm text-white placeholder-white/25
+        bg-white/[0.05] border transition-all duration-200 outline-none
+        focus:bg-white/[0.08] focus:shadow-[0_0_0_3px_rgba(201,168,76,0.12)]
+        ${error
+          ? 'border-red-400/50 focus:border-red-400/70'
+          : 'border-white/[0.10] focus:border-gold/50'}
+        ${icon ? 'pl-10' : ''}
+      `}
+    />
+  )
 }
 
 export default function AuthModal() {
-  const { authModal, authNotice, closeAuth, addToast } = useApp()
+  const { authModal, authNotice, closeAuth, addToast, openAuth } = useApp()
 
-  // FIX 1: sync mode from prop every time modal opens
   const [mode, setMode] = useState(authModal || MODES.login)
   useEffect(() => {
     if (authModal) setMode(authModal)
@@ -64,10 +100,9 @@ export default function AuthModal() {
   const firstInputRef = useRef(null)
 
   useEffect(() => {
-    if (authModal) setTimeout(() => firstInputRef.current?.focus(), 100)
+    if (authModal) setTimeout(() => firstInputRef.current?.focus(), 150)
   }, [authModal, mode])
 
-  // FIX 7: reset form state on mode switch
   const switchMode = useCallback((next) => {
     setMode(next)
     setErrors({})
@@ -84,7 +119,7 @@ export default function AuthModal() {
   const handleSubmit = async () => {
     let errs = {}
     if (mode === MODES.login)  errs = validateLoginForm(form)
-    if (mode === MODES.signup) errs = validateSignupForm(form)
+    if (mode === MODES.signup) errs = validateSignupFormSimple(form)
     if (mode === MODES.forgot) errs = validateForgotForm(form)
 
     if (hasErrors(errs)) { setErrors(errs); return }
@@ -97,7 +132,7 @@ export default function AuthModal() {
         closeAuth()
       } else if (mode === MODES.signup) {
         await authSignUp({ email: form.email, password: form.password, fullName: form.fullName, phone: form.phone })
-        addToast('Compte créé ! Vérifiez votre email pour confirmer.')
+        addToast('🎉 Compte créé avec succès ! Bienvenue chez HM Houti Cars.')
         closeAuth()
       } else if (mode === MODES.forgot) {
         await authForgotPassword(form.email)
@@ -113,6 +148,19 @@ export default function AuthModal() {
 
   const handleKeyDown = (e) => { if (e.key === 'Enter') handleSubmit() }
 
+  const titles = {
+    login:  'Bon retour',
+    signup: 'Créer un compte',
+    forgot: 'Mot de passe oublié',
+    sent:   'Email envoyé',
+  }
+  const subtitles = {
+    login:  'Accédez à votre espace client premium.',
+    signup: 'Inscription rapide — aucune confirmation email requise.',
+    forgot: 'Recevez un lien de réinitialisation instantanément.',
+    sent:   null,
+  }
+
   return (
     <AnimatePresence>
       <motion.div
@@ -120,162 +168,268 @@ export default function AuthModal() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/75 z-[600] flex items-center justify-center p-4"
+        transition={{ duration: 0.2 }}
+        className="fixed inset-0 z-[600] flex items-center justify-center p-4"
+        style={{ background: 'rgba(5,10,20,0.88)', backdropFilter: 'blur(12px)' }}
         onClick={(e) => e.target === e.currentTarget && closeAuth()}
         role="dialog"
         aria-modal="true"
-        aria-label={TITLES[mode]}
+        aria-label={titles[mode]}
       >
         <motion.div
-          initial={{ opacity: 0, scale: 0.96, y: 20 }}
+          initial={{ opacity: 0, scale: 0.94, y: 24 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.96, y: 20 }}
-          transition={{ duration: 0.25 }}
-          className="bg-navy rounded-[24px] max-w-[440px] w-full overflow-hidden
-            border border-white/[0.08] shadow-[0_25px_80px_rgba(0,0,0,0.6)]"
+          exit={{ opacity: 0, scale: 0.94, y: 24 }}
+          transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+          className="relative max-w-[420px] w-full overflow-hidden"
+          style={{
+            background: 'linear-gradient(135deg, rgba(20,37,58,0.95) 0%, rgba(11,22,35,0.98) 100%)',
+            border: '1px solid rgba(201,168,76,0.18)',
+            borderRadius: '24px',
+            boxShadow: '0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04), inset 0 1px 0 rgba(255,255,255,0.06)',
+          }}
         >
+          {/* Premium shimmer top bar */}
+          <div
+            className="absolute top-0 left-0 right-0 h-px"
+            style={{ background: 'linear-gradient(90deg, transparent, rgba(201,168,76,0.6), transparent)' }}
+          />
+
+          {/* Ambient glow */}
+          <div
+            className="absolute -top-20 left-1/2 -translate-x-1/2 w-64 h-32 pointer-events-none"
+            style={{ background: 'radial-gradient(ellipse, rgba(201,168,76,0.08) 0%, transparent 70%)' }}
+          />
+
           {/* Header */}
-          <div className="px-8 pt-8 pb-6 border-b border-white/[0.07]">
-            <div className="flex items-center justify-between mb-1">
+          <div className="relative px-7 pt-7 pb-5">
+            <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-2.5">
-                <div className="bg-gold text-navy font-condensed font-black text-lg px-2 py-0.5 rounded-md">HM</div>
-                <span className="text-white font-bold text-lg">Houti Cars</span>
+                <div
+                  className="font-condensed font-black text-[15px] px-2.5 py-1 rounded-lg text-navy"
+                  style={{ background: 'linear-gradient(135deg, #E8C76A, #C9A84C)' }}
+                >
+                  HM
+                </div>
+                <span className="text-white font-semibold text-sm tracking-wide">Houti Cars</span>
               </div>
-              <button onClick={closeAuth} aria-label="Fermer"
-                className="bg-white/[0.08] text-white/60 w-8 h-8 rounded-full border-none cursor-pointer
-                  flex items-center justify-center hover:bg-white/[0.15] hover:text-white transition-all">
-                <FiX />
+              <button
+                onClick={closeAuth}
+                aria-label="Fermer"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-white/40 hover:text-white transition-all duration-200 hover:bg-white/[0.08]"
+                style={{ border: '1px solid rgba(255,255,255,0.08)' }}
+              >
+                <FiX size={14} />
               </button>
             </div>
-            <div className="mt-5">
-              <h2 className="font-condensed font-black text-white text-[1.8rem]">{TITLES[mode]}</h2>
+
+            <div>
+              <h2
+                className="font-condensed font-black text-white leading-none"
+                style={{ fontSize: 'clamp(1.6rem, 4vw, 2rem)' }}
+              >
+                {titles[mode]}
+              </h2>
               {authNotice && (
-                <p className="mt-3 rounded-xl border border-gold/25 bg-gold/[0.08] px-4 py-3 text-sm font-semibold leading-relaxed text-gold">
+                <motion.p
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-3 rounded-xl px-4 py-3 text-xs font-semibold leading-relaxed text-gold"
+                  style={{ border: '1px solid rgba(201,168,76,0.2)', background: 'rgba(201,168,76,0.06)' }}
+                >
                   {authNotice}
-                </p>
+                </motion.p>
               )}
-              {SUBTITLES[mode] && <p className="text-text-muted text-sm mt-1">{SUBTITLES[mode]}</p>}
+              {subtitles[mode] && (
+                <p className="text-white/40 text-xs mt-1.5 leading-relaxed">{subtitles[mode]}</p>
+              )}
             </div>
           </div>
 
+          {/* Divider */}
+          <div className="mx-7 h-px" style={{ background: 'rgba(255,255,255,0.05)' }} />
+
           {/* Body */}
-          <div className="px-8 py-6">
+          <div className="px-7 py-6">
             <AnimatePresence mode="wait">
               <motion.div
                 key={mode}
-                initial={{ opacity: 0, y: 12 }}
+                initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -12 }}
+                exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.2 }}
                 className="flex flex-col gap-4"
               >
                 {/* Email sent screen */}
                 {mode === MODES.sent && (
-                  <div className="text-center py-4">
-                    <div className="text-5xl mb-4">📧</div>
-                    <p className="text-white/80 text-sm leading-relaxed">
-                      Un lien de réinitialisation a été envoyé à{' '}
-                      <strong className="text-gold">{sentEmail}</strong>.
-                      <br /><br />
-                      Vérifiez votre boîte de réception (et vos spams).
+                  <div className="text-center py-6">
+                    <div
+                      className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
+                      style={{ background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)' }}
+                    >
+                      <FiMail className="text-gold text-2xl" />
+                    </div>
+                    <p className="text-white/70 text-sm leading-relaxed">
+                      Lien envoyé à{' '}
+                      <strong className="text-gold">{sentEmail}</strong>
+                      <br /><span className="text-white/40 text-xs">Vérifiez vos spams si besoin.</span>
                     </p>
-                    <button onClick={() => switchMode(MODES.login)}
-                      className="mt-6 text-gold text-sm font-semibold bg-transparent border-none
-                        cursor-pointer hover:text-gold-light transition-colors">
+                    <button
+                      onClick={() => switchMode(MODES.login)}
+                      className="mt-5 text-gold text-xs font-semibold bg-transparent border-none cursor-pointer hover:text-gold-light transition-colors"
+                    >
                       ← Retour à la connexion
                     </button>
                   </div>
                 )}
 
-                {/* Signup-only fields */}
+                {/* Signup fields */}
                 {mode === MODES.signup && (
                   <>
-                    <AuthField label="Nom complet" error={errors.fullName}>
-                      <div className="relative">
-                        <input ref={firstInputRef} type="text" placeholder="Mohammed Alami"
-                          value={form.fullName} onChange={upd('fullName')} autoComplete="name"
-                          className={`auth-input pl-10 ${errors.fullName ? 'border-red-500' : ''}`} />
-                        <FiUser className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm" />
-                      </div>
-                    </AuthField>
-                    <AuthField label="Téléphone" error={errors.phone}>
-                      <div className="relative">
-                        <input type="tel" placeholder="+212 6XX XXX XXX"
-                          value={form.phone} onChange={upd('phone')} autoComplete="tel"
-                          className={`auth-input pl-10 ${errors.phone ? 'border-red-500' : ''}`} />
-                        <FiPhone className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm" />
-                      </div>
-                    </AuthField>
+                    <PremiumField label="Nom complet" error={errors.fullName} icon={FiUser} delay={0.05}>
+                      <PremiumInput
+                        inputRef={firstInputRef}
+                        type="text"
+                        placeholder="Mohammed Alami"
+                        value={form.fullName}
+                        onChange={upd('fullName')}
+                        autoComplete="name"
+                        error={errors.fullName}
+                        icon
+                      />
+                    </PremiumField>
+                    <PremiumField label="Téléphone" error={errors.phone} icon={FiPhone} delay={0.08}>
+                      <PremiumInput
+                        type="tel"
+                        placeholder="+212 6XX XXX XXX"
+                        value={form.phone}
+                        onChange={upd('phone')}
+                        autoComplete="tel"
+                        error={errors.phone}
+                        icon
+                      />
+                    </PremiumField>
                   </>
                 )}
 
                 {/* Email field */}
                 {mode !== MODES.sent && (
-                  <AuthField label="Email" error={errors.email}>
-                    <div className="relative">
-                      <input
-                        ref={mode !== MODES.signup ? firstInputRef : undefined}
-                        type="email" placeholder="votre@email.com"
-                        value={form.email} onChange={upd('email')} autoComplete="email"
-                        onKeyDown={mode === MODES.forgot ? handleKeyDown : undefined}
-                        className={`auth-input pl-10 ${errors.email ? 'border-red-500' : ''}`} />
-                      <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm" />
-                    </div>
-                  </AuthField>
+                  <PremiumField label="Email" error={errors.email} icon={FiMail} delay={mode === MODES.login ? 0.05 : 0.11}>
+                    <PremiumInput
+                      inputRef={mode !== MODES.signup ? firstInputRef : undefined}
+                      type="email"
+                      placeholder="votre@email.com"
+                      value={form.email}
+                      onChange={upd('email')}
+                      autoComplete="email"
+                      onKeyDown={mode === MODES.forgot ? handleKeyDown : undefined}
+                      error={errors.email}
+                      icon
+                    />
+                  </PremiumField>
                 )}
 
-                {/* Password fields */}
+                {/* Password */}
                 {(mode === MODES.login || mode === MODES.signup) && (
-                  <>
-                    <AuthField label="Mot de passe" error={errors.password}>
-                      <PasswordInput value={form.password} onChange={upd('password')}
-                        onKeyDown={mode === MODES.login ? handleKeyDown : undefined}
-                        className={errors.password ? 'border-red-500' : ''} />
-                    </AuthField>
-                    {mode === MODES.signup && (
-                      <AuthField label="Confirmer le mot de passe" error={errors.password2}>
-                        <PasswordInput value={form.password2} onChange={upd('password2')}
-                          onKeyDown={handleKeyDown}
-                          className={errors.password2 ? 'border-red-500' : ''} />
-                      </AuthField>
-                    )}
-                  </>
+                  <PremiumField label="Mot de passe" error={errors.password} icon={FiLock} delay={mode === MODES.login ? 0.08 : 0.14}>
+                    <PasswordInput
+                      value={form.password}
+                      onChange={upd('password')}
+                      onKeyDown={handleKeyDown}
+                      className={errors.password ? 'border-red-400/50' : ''}
+                    />
+                  </PremiumField>
                 )}
 
                 {/* Forgot link */}
                 {mode === MODES.login && (
                   <div className="text-right -mt-1">
-                    <button onClick={() => switchMode(MODES.forgot)}
-                      className="text-gold text-[12px] bg-transparent border-none cursor-pointer hover:text-gold-light transition-colors">
+                    <button
+                      onClick={() => switchMode(MODES.forgot)}
+                      className="text-gold/70 text-[11px] bg-transparent border-none cursor-pointer hover:text-gold transition-colors"
+                    >
                       Mot de passe oublié ?
                     </button>
                   </div>
                 )}
 
-                {/* Submit button */}
+                {/* CTA Button */}
                 {mode !== MODES.sent && (
-                  <AuthButton loading={loading} onClick={handleSubmit}>
-                    {{ login: '🔑 Se connecter', signup: '🚀 Créer mon compte', forgot: '📧 Envoyer le lien' }[mode]}
-                  </AuthButton>
+                  <motion.button
+                    type="button"
+                    onClick={handleSubmit}
+                    disabled={loading}
+                    whileHover={{ scale: loading ? 1 : 1.01 }}
+                    whileTap={{ scale: loading ? 1 : 0.99 }}
+                    className="w-full py-3.5 rounded-xl font-bold text-[14px] font-condensed uppercase tracking-[2px] border-none cursor-pointer mt-1 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center gap-2"
+                    style={{
+                      background: loading ? 'rgba(201,168,76,0.6)' : 'linear-gradient(135deg, #E8C76A 0%, #C9A84C 100%)',
+                      color: '#0B1623',
+                      boxShadow: loading ? 'none' : '0 8px 24px rgba(201,168,76,0.3)',
+                    }}
+                  >
+                    {loading ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-navy/30 border-t-navy rounded-full animate-spin" />
+                        <span>Chargement...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>
+                          {mode === MODES.login && 'Se connecter'}
+                          {mode === MODES.signup && 'Créer mon compte'}
+                          {mode === MODES.forgot && 'Envoyer le lien'}
+                        </span>
+                        <FiArrowRight size={14} />
+                      </>
+                    )}
+                  </motion.button>
                 )}
               </motion.div>
             </AnimatePresence>
 
-            {/* Footer mode switch */}
+            {/* Footer links */}
             {(mode === MODES.login || mode === MODES.signup) && (
-              <div className="text-center mt-5 text-sm text-text-muted">
-                {mode === MODES.login ? (
-                  <>Pas encore de compte ?{' '}
-                    <button onClick={() => switchMode(MODES.signup)}
-                      className="text-gold font-semibold bg-transparent border-none cursor-pointer hover:text-gold-light transition-colors">
-                      S'inscrire
-                    </button></>
-                ) : (
-                  <>Déjà un compte ?{' '}
-                    <button onClick={() => switchMode(MODES.login)}
-                      className="text-gold font-semibold bg-transparent border-none cursor-pointer hover:text-gold-light transition-colors">
-                      Se connecter
-                    </button></>
+              <div className="mt-5 space-y-3">
+                <div className="text-center text-xs text-white/30">
+                  {mode === MODES.login ? (
+                    <>
+                      Pas encore de compte ?{' '}
+                      <button
+                        onClick={() => switchMode(MODES.signup)}
+                        className="text-gold font-semibold bg-transparent border-none cursor-pointer hover:text-gold-light transition-colors"
+                      >
+                        S'inscrire gratuitement
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      Déjà un compte ?{' '}
+                      <button
+                        onClick={() => switchMode(MODES.login)}
+                        className="text-gold font-semibold bg-transparent border-none cursor-pointer hover:text-gold-light transition-colors"
+                      >
+                        Se connecter
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {/* Guest reservation hint */}
+                {mode === MODES.signup && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.3 }}
+                    className="text-center"
+                  >
+                    <button
+                      onClick={closeAuth}
+                      className="text-white/25 text-[11px] bg-transparent border-none cursor-pointer hover:text-white/50 transition-colors"
+                    >
+                      Continuer sans compte →
+                    </button>
+                  </motion.div>
                 )}
               </div>
             )}

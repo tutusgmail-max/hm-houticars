@@ -149,7 +149,8 @@ export function AuthProvider({ children }) {
   }, [])
 
   const isAdmin         = profile?.role === 'admin'
-  const isEmailVerified = user?.email_confirmed_at != null
+  // Instant access after signup — email confirmation disabled in Supabase + UX
+  const isEmailVerified = true
 
   return (
     <AuthContext.Provider value={{
