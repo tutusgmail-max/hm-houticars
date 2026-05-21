@@ -42,48 +42,57 @@ function getSupabaseProjectRefFromUrl(url) {
   }
 }
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    'Variables Supabase manquantes. Copiez .env.example en .env et renseignez VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY.',
-  )
+const CONFIG_ERROR = 'Une erreur est survenue. Réessayez plus tard.'
+
+function assertSupabaseConfig() {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    if (import.meta.env.DEV) {
+      console.error('[Supabase] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY')
+    }
+    throw new Error(CONFIG_ERROR)
+  }
+
+  let parsedUrl
+  try {
+    parsedUrl = new URL(supabaseUrl)
+  } catch {
+    if (import.meta.env.DEV) console.error('[Supabase] Invalid VITE_SUPABASE_URL:', supabaseUrl)
+    throw new Error(CONFIG_ERROR)
+  }
+
+  if (parsedUrl.protocol !== 'https:') {
+    if (import.meta.env.DEV) console.error('[Supabase] URL must use https://', supabaseUrl)
+    throw new Error(CONFIG_ERROR)
+  }
+
+  const urlRef = getSupabaseProjectRefFromUrl(supabaseUrl)
+  const jwtPayload = decodeJwtPayload(supabaseAnonKey)
+  const keyRef = jwtPayload?.ref || null
+
+  if (!urlRef) {
+    if (import.meta.env.DEV) console.error('[Supabase] URL must be https://<ref>.supabase.co')
+    throw new Error(CONFIG_ERROR)
+  }
+  if (keyRef && keyRef !== urlRef) {
+    if (import.meta.env.DEV) {
+      console.error('[Supabase] URL ref and anon key ref mismatch', { urlRef, keyRef })
+    }
+    throw new Error(CONFIG_ERROR)
+  }
+  if (jwtPayload?.role === 'service_role') {
+    if (import.meta.env.DEV) console.error('[Supabase] service_role must not be used in VITE_SUPABASE_ANON_KEY')
+    throw new Error(CONFIG_ERROR)
+  }
+
 }
 
-// Extra safety: catch common misconfiguration early (prevents opaque "NetworkError" later).
-const urlRef = getSupabaseProjectRefFromUrl(supabaseUrl)
-const jwtPayload = decodeJwtPayload(supabaseAnonKey)
-const keyRef = jwtPayload?.ref || null
-if (!urlRef) {
-  throw new Error(`VITE_SUPABASE_URL invalide: "${supabaseUrl}"`)
-}
-if (keyRef && keyRef !== urlRef) {
-  throw new Error(
-    `Mauvaise configuration Supabase: l'URL pointe vers "${urlRef}" mais la clé ANON appartient à "${keyRef}". ` +
-      `Mettez à jour VITE_SUPABASE_ANON_KEY (Supabase Dashboard → Project Settings → API).`,
-  )
-}
-if (jwtPayload?.role === 'service_role') {
-  throw new Error(
-    'Clé service_role détectée dans VITE_SUPABASE_ANON_KEY. Utilisez uniquement la clé « anon » (publique) côté frontend.',
-  )
-}
+assertSupabaseConfig()
 
 /** Only parse OAuth/recovery tokens on routes that need them (avoids stray hash processing) */
 function shouldDetectSessionInUrl() {
   if (typeof window === 'undefined') return false
   const path = window.location.pathname || ''
   return path === '/reset-password' || window.location.hash.includes('access_token')
-}
-
-if (import.meta.env.DEV) {
-  const envRef = getSupabaseProjectRefFromUrl(supabaseUrl)
-  const keyRefDbg = decodeJwtPayload(supabaseAnonKey)?.ref
-  console.info('[Supabase env]', {
-    VITE_SUPABASE_URL: supabaseUrl,
-    projectRef: envRef,
-    anonKeyRef: keyRefDbg,
-    refsMatch: !keyRefDbg || keyRefDbg === envRef,
-    expectedRef: 'ertdqfavrkomikszagtc',
-  })
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {

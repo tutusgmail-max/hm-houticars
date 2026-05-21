@@ -35,7 +35,7 @@ export function getAuthCooldownRemainingMs() {
 
 export function getAuthBlockedMessage() {
   const sec = Math.max(1, Math.ceil(getAuthCooldownRemainingMs() / 1000))
-  return `Limite de sécurité Supabase. Réessayez dans ${sec} s (ou utilisez Connexion si le compte existe déjà).`
+  return `Trop de tentatives. Réessayez dans ${sec} seconde${sec > 1 ? 's' : ''}.`
 }
 
 export function isAuthRateLimited(err) {

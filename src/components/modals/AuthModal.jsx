@@ -23,8 +23,10 @@ import {
   validateForgotForm,
   hasErrors,
   parseAuthError,
+  AUTH_MESSAGES,
+  isEmailAlreadyRegistered,
 } from '../../utils/validation'
-import { formatAuthErrorForUi, isAuthDebug } from '../../utils/authDebug'
+import { logAuthError } from '../../utils/authDebug'
 import PasswordInput from '../auth/PasswordInput'
 import {
   getAuthCooldownRemainingMs,
@@ -179,30 +181,43 @@ export default function AuthModal() {
       if (submitMode === MODES.login) {
         const result = await authSignIn({ email: form.email, password: form.password })
         if (generation !== submitGenerationRef.current) return
-        if (!result?.session) throw new Error('Session introuvable après connexion.')
+        if (!result?.session) {
+          logAuthError('signIn.noSession', { message: 'missing session after signIn' })
+          setErrors({ form: AUTH_MESSAGES.serverError })
+          addToast(AUTH_MESSAGES.serverError, 'error')
+          return
+        }
         submitCompletedRef.current = true
-        addToast('Bienvenue ! Connexion réussie.')
+        addToast(AUTH_MESSAGES.loginSuccess, 'success')
         closeAuth()
       } else if (submitMode === MODES.signup) {
-        const result = await authSignUp({ email: form.email, password: form.password, fullName: form.fullName, phone: form.phone })
+        const result = await authSignUp({
+          email: form.email,
+          password: form.password,
+          fullName: form.fullName,
+          phone: form.phone,
+        })
         if (generation !== submitGenerationRef.current) return
+
         if (result?.session) {
           submitCompletedRef.current = true
-          addToast('Compte créé — bienvenue chez HM Houti Cars !')
+          addToast(AUTH_MESSAGES.signupSuccess, 'success')
           closeAuth()
-        } else if (result?.user) {
-          // Account exists but no session — do NOT call signUp again (Supabase rate-limits same email)
+          return
+        }
+
+        if (result?.user) {
           submitCompletedRef.current = true
           const savedEmail = form.email
           setForm({ ...emptyForm(), email: savedEmail })
           setMode(MODES.login)
-          addToast(
-            'Compte créé. Connectez-vous avec votre mot de passe. (Si besoin : Supabase → Auth → Email → désactiver la confirmation.)',
-            'success',
-          )
-        } else {
-          throw new Error('Compte non créé. Réessayez une fois.')
+          addToast(AUTH_MESSAGES.signupConfirmLogin, 'success')
+          return
         }
+
+        logAuthError('signUp.emptyResult', { message: 'no user and no session' })
+        setErrors({ form: AUTH_MESSAGES.serverError })
+        addToast(AUTH_MESSAGES.serverError, 'error')
       } else if (submitMode === MODES.forgot) {
         await authForgotPassword(form.email)
         if (generation !== submitGenerationRef.current) return
@@ -211,14 +226,15 @@ export default function AuthModal() {
       }
     } catch (err) {
       if (generation !== submitGenerationRef.current) return
-      const friendly = formatAuthErrorForUi(err, parseAuthError)
-      setErrors({ form: friendly, formDebug: isAuthDebug() ? JSON.stringify(err, Object.getOwnPropertyNames(err)) : undefined })
+      logAuthError(submitMode, err)
 
-      const alreadyUsed = (err?.message || '').toLowerCase().includes('already')
-      if (alreadyUsed && submitMode === MODES.signup) {
-        addToast(friendly, 'error')
+      const friendly = parseAuthError(err)
+      setErrors({ form: friendly })
+
+      if (isEmailAlreadyRegistered(err) && submitMode === MODES.signup) {
         setMode(MODES.login)
-        setErrors({})
+        setErrors({ form: AUTH_MESSAGES.emailInUse })
+        addToast(AUTH_MESSAGES.emailInUse, 'error')
         return
       }
 
@@ -354,11 +370,6 @@ export default function AuthModal() {
                 style={{ border: '1px solid rgba(251,191,36,0.25)', background: 'rgba(251,191,36,0.08)' }}
               >
                 {errors.form}
-                {errors.formDebug && (
-                  <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-all text-[10px] text-white/50 font-mono">
-                    {errors.formDebug}
-                  </pre>
-                )}
               </motion.div>
             )}
 
@@ -485,7 +496,7 @@ export default function AuthModal() {
                   <motion.button
                     type="submit"
                     disabled={isSubmitDisabled}
-                    aria-busy={loading}
+                    aria-busy={loading || isSubmitting}
                     whileHover={{ scale: isSubmitDisabled ? 1 : 1.01 }}
                     whileTap={{ scale: isSubmitDisabled ? 1 : 0.99 }}
                     className="w-full py-3.5 rounded-xl font-bold text-[14px] font-condensed uppercase tracking-[2px] border-none cursor-pointer mt-1 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center gap-2"
@@ -495,10 +506,12 @@ export default function AuthModal() {
                       boxShadow: isSubmitDisabled ? 'none' : '0 8px 24px rgba(201,168,76,0.3)',
                     }}
                   >
-                    {loading ? (
+                    {loading || isSubmitting ? (
                       <>
                         <span className="w-4 h-4 border-2 border-navy/30 border-t-navy rounded-full animate-spin" />
-                        <span>Un instant...</span>
+                        <span>
+                          {mode === MODES.signup ? 'Création en cours...' : 'Un instant...'}
+                        </span>
                       </>
                     ) : (
                       <>
