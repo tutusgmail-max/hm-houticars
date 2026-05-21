@@ -1,18 +1,6 @@
 /**
- * AuthContext.jsx
- * Single source of truth for authentication state.
- *
- * BUGS FIXED:
- * 1. profileFetchRef used userId as a "lock" but never cleared it on error,
- *    meaning if fetchProfile threw once, subsequent loadProfile calls for
- *    the same userId would silently no-op forever in that session.
- * 2. refreshSession called loadUserDocuments but also called fetchProfile
- *    directly — duplicating the profile load logic. Unified to one path.
- * 3. onAuthStateChange fired SIGNED_IN on every token refresh, triggering
- *    redundant profile/document fetches. Added event-type guard.
- * 4. No mounted-flag guard in authGetSession().then() — if component
- *    unmounted before promise resolved, setState was called on unmounted
- *    component. Fixed with mounted ref.
+ * AuthContext.jsx — session-first bootstrap (no blank screen / infinite loader).
+ * Profile loads in background; duplicate auth events are deduped.
  */
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { authGetSession, authOnChange, authSignOut } from '../services/auth.service'
@@ -29,10 +17,9 @@ export function AuthProvider({ children }) {
   const [profileLoading, setProfileLoading]   = useState(false)
   const [documentsLoading, setDocumentsLoading] = useState(false)
 
-  // BUG FIX: Track current inflight userId to prevent duplicate fetches,
-  // but store it as a plain ref value (not the userId itself as a lock key
-  // that never clears on error).
-  const profileFetchingRef = useRef(false)
+  const bootstrappedRef = useRef(false)
+  const userIdRef = useRef(null)
+  const profileInflightRef = useRef(new Map())
 
   const loadUserDocuments = useCallback(async (userId, legacyProfile) => {
     if (!userId) { setUserDocuments(null); return null }
@@ -55,110 +42,126 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  // BUG FIX: loadProfile is now re-callable for the same userId (removed
-  // broken userId-as-lock pattern). Uses a boolean inflight guard instead.
   const loadProfile = useCallback(async (sessionUserOrUserId) => {
     const userId = typeof sessionUserOrUserId === 'string'
       ? sessionUserOrUserId
       : sessionUserOrUserId?.id
 
-    if (profileFetchingRef.current) return
-    profileFetchingRef.current = true
-    setProfileLoading(true)
-    try {
-      const data = await fetchProfile(userId, typeof sessionUserOrUserId === 'string' ? null : sessionUserOrUserId)
-      setProfile(data)
-      return data
-    } catch (err) {
-      if (err?.code !== 'PGRST116') {
-        console.warn('[AuthContext] loadProfile error:', err?.message)
-      }
-      setProfile(null)
-      return null
-    } finally {
-      setProfileLoading(false)
-      profileFetchingRef.current = false
+    if (!userId) return null
+
+    if (profileInflightRef.current.has(userId)) {
+      return profileInflightRef.current.get(userId)
     }
+
+    const promise = (async () => {
+      setProfileLoading(true)
+      try {
+        const data = await fetchProfile(
+          userId,
+          typeof sessionUserOrUserId === 'string' ? null : sessionUserOrUserId,
+        )
+        setProfile(data)
+        return data
+      } catch (err) {
+        if (err?.code !== 'PGRST116') {
+          console.warn('[AuthContext] loadProfile error:', err?.message)
+        }
+        setProfile(null)
+        return null
+      } finally {
+        setProfileLoading(false)
+        profileInflightRef.current.delete(userId)
+      }
+    })()
+
+    profileInflightRef.current.set(userId, promise)
+    return promise
   }, [])
 
-  // BUG FIX: Unified refresh path — no duplicate fetch logic.
   const refreshSession = useCallback(async (sessionUser) => {
     if (!sessionUser) {
       setProfile(null)
       setUserDocuments(null)
-      profileFetchingRef.current = false
+      profileInflightRef.current.clear()
       return
     }
     const prof = await loadProfile(sessionUser)
     await loadUserDocuments(sessionUser.id, prof)
   }, [loadProfile, loadUserDocuments])
 
+  const applySession = useCallback((sessionUser, { refreshProfile = false } = {}) => {
+    const prevId = userIdRef.current
+    const nextId = sessionUser?.id ?? null
+    userIdRef.current = nextId
+    setUser(sessionUser)
+
+    if (sessionUser && (refreshProfile || nextId !== prevId)) {
+      refreshSession(sessionUser).catch(() => {})
+    }
+    if (!sessionUser) {
+      setProfile(null)
+      setUserDocuments(null)
+      profileInflightRef.current.clear()
+    }
+  }, [refreshSession])
+
   useEffect(() => {
     let mounted = true
-    const bootstrappedRef = { current: false }
 
-    authGetSession().then(async (session) => {
+    const finishBootstrap = (sessionUser) => {
       if (!mounted) return
-      const sessionUser = session?.user ?? null
-      setUser(sessionUser)
-      try {
-        if (sessionUser) {
-          await refreshSession(sessionUser)
-        }
-      } finally {
-        bootstrappedRef.current = true
-        // Ensure we always exit the initial loading state even if profile/doc fetch fails,
-        // otherwise the UI can get stuck and users will trigger requests while effectively
-        // unauthenticated (leading to RLS errors like "new row violates row-level security").
-        if (mounted) setAuthLoading(false)
-      }
-    }).catch(() => {
       bootstrappedRef.current = true
-      if (mounted) setAuthLoading(false)
-    })
+      applySession(sessionUser, { refreshProfile: !!sessionUser })
+      setAuthLoading(false)
+    }
+
+    authGetSession()
+      .then((session) => finishBootstrap(session?.user ?? null))
+      .catch(() => {
+        if (mounted) {
+          bootstrappedRef.current = true
+          setAuthLoading(false)
+        }
+      })
 
     const subscription = authOnChange((event, session) => {
       if (!mounted) return
-      const sessionUser = session?.user ?? null
 
-      // BUG FIX: TOKEN_REFRESHED fires on every silent token renewal.
-      // It does not change who the user is — skip redundant profile fetches.
       if (event === 'TOKEN_REFRESHED') return
 
-      // INITIAL_SESSION duplicates authGetSession bootstrap — skip extra profile fetches
-      if (event === 'INITIAL_SESSION' && bootstrappedRef.current) {
-        setAuthLoading(false)
+      const sessionUser = session?.user ?? null
+
+      // Bootstrap via listener only if getSession has not completed yet
+      if (event === 'INITIAL_SESSION') {
+        if (!bootstrappedRef.current) finishBootstrap(sessionUser)
         return
       }
 
-      setUser(sessionUser)
+      setAuthLoading(false)
 
-      if (sessionUser) {
-        // SIGNED_IN, USER_UPDATED, PASSWORD_RECOVERY
-        refreshSession(sessionUser)
-      } else {
-        // SIGNED_OUT
-        setProfile(null)
-        setUserDocuments(null)
-        profileFetchingRef.current = false
+      if (event === 'SIGNED_OUT') {
+        applySession(null)
+        return
       }
 
-      // Auth loading is done after first event
-      setAuthLoading(false)
+      if (sessionUser) {
+        applySession(sessionUser, { refreshProfile: event === 'SIGNED_IN' || event === 'USER_UPDATED' })
+      } else {
+        applySession(null)
+      }
     })
 
     return () => {
       mounted = false
       subscription.unsubscribe()
     }
-  }, [refreshSession])
+  }, [applySession])
 
   const signOut = useCallback(async () => {
     await authSignOut()
   }, [])
 
   const isAdmin         = profile?.role === 'admin'
-  // Instant access after signup — email confirmation disabled in Supabase + UX
   const isEmailVerified = true
 
   return (

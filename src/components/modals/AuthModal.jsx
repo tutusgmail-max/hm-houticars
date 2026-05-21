@@ -89,7 +89,10 @@ export default function AuthModal() {
 
   const [mode, setMode] = useState(authModal || MODES.login)
   useEffect(() => {
-    if (authModal) setMode(authModal)
+    if (!authModal) return
+    setMode(authModal)
+    setErrors({})
+    setSentEmail('')
   }, [authModal])
 
   const [loading, setLoading] = useState(false)
@@ -136,11 +139,15 @@ export default function AuthModal() {
 
     try {
       if (mode === MODES.login) {
-        await authSignIn({ email: form.email, password: form.password })
+        const result = await authSignIn({ email: form.email, password: form.password })
+        if (!result?.session) throw new Error('Session introuvable après connexion.')
         addToast('Bienvenue ! Connexion réussie.')
         closeAuth()
       } else if (mode === MODES.signup) {
-        await authSignUp({ email: form.email, password: form.password, fullName: form.fullName, phone: form.phone })
+        const result = await authSignUp({ email: form.email, password: form.password, fullName: form.fullName, phone: form.phone })
+        if (!result?.session && !result?.user) {
+          throw new Error('Compte non créé. Réessayez une fois.')
+        }
         addToast('Compte créé — bienvenue chez HM Houti Cars !')
         closeAuth()
       } else if (mode === MODES.forgot) {

@@ -23,19 +23,28 @@ export async function authSignUp({ email, password, fullName, phone }) {
     })
     if (error) throw error
 
-    // Upsert profile row immediately (DB trigger also does this as fallback)
+    // Upsert profile in background — do not block signup UX
     if (data.user) {
-      const { error: profileError } = await supabase.from('profiles').upsert({
+      supabase.from('profiles').upsert({
         id: data.user.id,
         full_name: displayName,
         phone: displayPhone,
         email: normalizedEmail,
         role: 'client',
-      }, { onConflict: 'id' })
-      if (profileError) {
-        console.warn('[authSignUp] profile upsert:', profileError.message)
-      }
+      }, { onConflict: 'id' }).then(({ error: profileError }) => {
+        if (profileError) console.warn('[authSignUp] profile upsert:', profileError.message)
+      })
     }
+
+    // Instant access: some projects return user without session until auto sign-in
+    if (!data.session) {
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password,
+      })
+      if (!signInError && signInData?.session) return signInData
+    }
+
     return data
   })
 }

@@ -106,7 +106,11 @@ export function AppProvider({ children }) {
   const closeBooking  = useCallback(() => setBookingModal(null), [])
   const openReceipt   = useCallback((data) => { setBookingModal(null); setReceipt(data) }, [])
   const closeReceipt  = useCallback(() => setReceipt(null), [])
-  const openAuth      = useCallback((mode = 'login', notice = '') => { setAuthNotice(notice); setAuthModal(mode) }, [])
+  const openAuth      = useCallback((mode = 'login', notice = '') => {
+    const preferred = notice ? 'signup' : mode
+    setAuthNotice(notice)
+    setAuthModal(preferred)
+  }, [])
   const closeAuth     = useCallback(() => { setAuthModal(null); setAuthNotice('') }, [])
 
   const addToast = useCallback((msg, type = 'success') => {

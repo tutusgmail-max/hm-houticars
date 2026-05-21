@@ -108,7 +108,5 @@ export function parseAuthError(err) {
   if (msg.includes('signup is disabled')) return 'Inscription temporairement indisponible. Contactez-nous sur WhatsApp.'
   if (msg.includes('invalid email')) return 'Adresse email invalide.'
 
-  const raw = err?.message || ''
-  if (!raw || raw.length > 120) return 'Une petite erreur est survenue. Réessayez calmement.'
-  return raw
+  return 'Impossible pour le moment. Réessayez dans un instant ou contactez-nous sur WhatsApp.'
 }

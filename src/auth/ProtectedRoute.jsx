@@ -65,11 +65,11 @@ export default function ProtectedRoute({ children, adminOnly = false }) {
     }
   }, [adminOnly, authLoading, user, isAdmin, profileLoading, profile, adminRetry, loadProfile])
 
-  // Show loader while checking session
+  // Show loader only while session is resolving (not while profile loads)
   if (authLoading) return <FullPageLoader />
 
-  // Not authenticated — redirect (modal opened via effect above)
-  if (!user) return <Navigate to="/" replace />
+  // Not authenticated — redirect home; auth modal opens via effect
+  if (!user) return <Navigate to="/" replace state={{ authRequired: true }} />
 
   // Wait for profile before admin check
   if (adminOnly && profileLoading) return <FullPageLoader />
