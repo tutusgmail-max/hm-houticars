@@ -38,7 +38,7 @@ export default function CarsSection() {
         FLEET
       </div>
 
-      <div className="max-w-[1100px] mx-auto">
+      <div className="max-w-[1360px] mx-auto">
         {/* ── Section Header ─────────────────────────────── */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
