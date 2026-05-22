@@ -14,6 +14,7 @@ import { authGetSession, authOnChange, authSignOut } from '../services/auth.serv
 import { fetchProfile } from '../services/profile.service'
 import { fetchUserDocuments, parseDocuments } from '../services/documentUpload.service'
 import { isAdminRole, resolveEffectiveRole } from '../utils/adminRole'
+import { clearAuthHashFromUrl } from '../utils/authUrl'
 
 const AuthContext = createContext(null)
 
@@ -162,6 +163,19 @@ export function AuthProvider({ children }) {
 
       const sessionUser = session?.user ?? null
 
+      if (event === 'PASSWORD_RECOVERY') {
+        setAuthLoading(false)
+        if (sessionUser) {
+          userIdRef.current = sessionUser.id
+          setUser(sessionUser)
+        }
+        if (typeof window !== 'undefined' && window.location.pathname !== '/reset-password') {
+          const hash = window.location.hash || ''
+          window.location.replace(`/reset-password${hash}`)
+        }
+        return
+      }
+
       if (event === 'INITIAL_SESSION') {
         finishBootstrap(sessionUser)
         return
@@ -176,6 +190,7 @@ export function AuthProvider({ children }) {
 
       if (event === 'SIGNED_OUT') {
         applySession(null)
+        clearAuthHashFromUrl()
         return
       }
 
@@ -185,6 +200,7 @@ export function AuthProvider({ children }) {
           || event === 'SIGNED_IN'
           || sessionUser.id !== userIdRef.current
         applySession(sessionUser, { refreshProfile })
+        if (event === 'SIGNED_IN') clearAuthHashFromUrl()
       } else {
         applySession(null)
       }

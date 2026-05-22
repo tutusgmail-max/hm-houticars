@@ -13,9 +13,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: typeof window !== 'undefined'
-      && (window.location.pathname === '/reset-password'
-        || window.location.hash.includes('access_token')),
+    // Hash tokens consumed manually in AuthHashRouter (route-aware, no /admin hijack).
+    detectSessionInUrl: false,
     storageKey: 'hmhouticars-auth',
   },
 })

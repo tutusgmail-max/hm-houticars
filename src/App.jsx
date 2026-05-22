@@ -17,6 +17,7 @@ import BookingModal from './components/modals/BookingModal'
 import ReceiptModal from './components/modals/ReceiptModal'
 
 import ProtectedRoute from './auth/ProtectedRoute'
+import AuthHashRouter from './auth/AuthHashRouter'
 
 import HomePage from './pages/HomePage'
 import DashboardPage from './pages/DashboardPage'
@@ -26,7 +27,7 @@ const AdminApp = lazy(() => import('./pages/AdminApp'))
 
 function AppShell() {
   const { user, authLoading } = useAuth()
-  const { resumePendingBooking } = useApp()
+  const { authModal, closeAuth, resumePendingBooking } = useApp()
   const location = useLocation()
   const isAdminRoute = location.pathname.startsWith('/admin')
 
@@ -44,12 +45,20 @@ function AppShell() {
     resumePendingBooking()
   }, [authLoading, user?.id, resumePendingBooking])
 
+  // Close login modal once session exists (prevents stale "forgot password" UI after sign-in).
+  useEffect(() => {
+    if (!authLoading && user && authModal) {
+      closeAuth()
+    }
+  }, [authLoading, user?.id, authModal, closeAuth])
+
   if (authLoading) {
     return <FullPageLoader />
   }
 
   return (
     <>
+      <AuthHashRouter />
       {!isAdminRoute && (
         <div className="sticky top-0 z-[200]">
           <Navbar />

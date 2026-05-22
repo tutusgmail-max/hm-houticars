@@ -19,26 +19,26 @@ import AuthField from '../components/auth/AuthField'
 import PasswordInput from '../components/auth/PasswordInput'
 import AuthButton from '../components/auth/AuthButton'
 import { useAuth } from '../auth/AuthContext'
+import { clearAuthHashFromUrl, hasAuthHashInUrl } from '../utils/authUrl'
 
 export default function ResetPasswordPage() {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, authLoading } = useAuth()
   const [form, setForm] = useState({ password: '', password2: '' })
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const [globalError, setGlobalError] = useState('')
 
-  // If accessed without a valid recovery session, redirect home
   useEffect(() => {
-    // Give Supabase a moment to process the URL hash
+    if (authLoading) return
     const timer = setTimeout(() => {
-      if (!user && !window.location.hash.includes('access_token')) {
+      if (!user && !hasAuthHashInUrl()) {
         navigate('/', { replace: true })
       }
-    }, 1500)
+    }, 2000)
     return () => clearTimeout(timer)
-  }, [user, navigate])
+  }, [user, authLoading, navigate])
 
   const upd = (k) => (e) => {
     setForm((p) => ({ ...p, [k]: e.target.value }))
@@ -53,6 +53,7 @@ export default function ResetPasswordPage() {
     setLoading(true)
     try {
       await authResetPassword(form.password)
+      clearAuthHashFromUrl()
       setDone(true)
       setTimeout(() => navigate('/dashboard', { replace: true }), 2500)
     } catch (err) {

@@ -50,10 +50,23 @@ function emptyForm() {
 export default function AuthModal() {
   const { authModal, authNotice, closeAuth, addToast } = useApp()
 
-  // FIX 1: sync mode from prop every time modal opens
-  const [mode, setMode] = useState(authModal || MODES.login)
+  // Sync mode + reset form whenever modal opens or mode prop changes (prevents stale "forgot" UI).
+  const [mode, setMode] = useState(MODES.login)
   useEffect(() => {
-    if (authModal) setMode(authModal)
+    if (!authModal) {
+      setMode(MODES.login)
+      setForm(emptyForm())
+      setErrors({})
+      setSentEmail('')
+      return
+    }
+    const nextMode = authModal === MODES.signup ? MODES.signup
+      : authModal === MODES.forgot ? MODES.forgot
+        : MODES.login
+    setMode(nextMode)
+    setForm(emptyForm())
+    setErrors({})
+    if (nextMode !== MODES.forgot) setSentEmail('')
   }, [authModal])
 
   const [loading, setLoading] = useState(false)
@@ -94,6 +107,8 @@ export default function AuthModal() {
       if (mode === MODES.login) {
         await authSignIn({ email: form.email, password: form.password })
         addToast('Bienvenue ! Connexion réussie.')
+        setMode(MODES.login)
+        setForm(emptyForm())
         closeAuth()
       } else if (mode === MODES.signup) {
         await authSignUp({ email: form.email, password: form.password, fullName: form.fullName, phone: form.phone })
