@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect } from 'react'
+import React, { lazy, Suspense, useEffect, useRef } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 
 import { AppProvider } from './context/AppContext'
@@ -30,11 +30,19 @@ function AppShell() {
   const location = useLocation()
   const isAdminRoute = location.pathname.startsWith('/admin')
 
+  const resumedForUserIdRef = useRef(null)
+
   useEffect(() => {
-    if (!authLoading && user) {
-      resumePendingBooking()
+    const userId = user?.id
+    if (!userId) {
+      resumedForUserIdRef.current = null
+      return
     }
-  }, [authLoading, user, resumePendingBooking])
+    if (authLoading) return
+    if (resumedForUserIdRef.current === userId) return
+    resumedForUserIdRef.current = userId
+    resumePendingBooking()
+  }, [authLoading, user?.id, resumePendingBooking])
 
   if (authLoading) {
     return <FullPageLoader />

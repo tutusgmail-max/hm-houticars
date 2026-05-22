@@ -5,9 +5,14 @@ import { FALLBACK_CARS, getCarById as getFallbackCarById } from '../data'
 const CarsContext = createContext(null)
 
 function normalizePublicCars(rows = []) {
-  return FALLBACK_CARS.map((fallback) => {
-    const row = rows.find((car) => car.name?.toLowerCase() === fallback.name.toLowerCase())
-    return row ? { ...fallback, ...row, price: fallback.price, fuel: fallback.fuel, img: fallback.img, available: row.available !== false } : fallback
+  if (!rows.length) return FALLBACK_CARS
+  return rows.map((row) => {
+    const fallback = FALLBACK_CARS.find(
+      (c) => c.name?.toLowerCase() === row.name?.toLowerCase(),
+    )
+    return fallback
+      ? { ...fallback, ...row, available: row.available !== false }
+      : { ...row, available: row.available !== false }
   })
 }
 

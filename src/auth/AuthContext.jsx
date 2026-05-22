@@ -1,11 +1,19 @@
 /**
- * AuthContext.jsx
- * Single source of truth for authentication state.
+ * AuthContext — single auth listener, stable profile/admin resolution.
  */
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+} from 'react'
 import { authGetSession, authOnChange, authSignOut } from '../services/auth.service'
 import { fetchProfile } from '../services/profile.service'
 import { fetchUserDocuments, parseDocuments } from '../services/documentUpload.service'
+import { isAdminRole, resolveEffectiveRole } from '../utils/adminRole'
 
 const AuthContext = createContext(null)
 
@@ -17,45 +25,10 @@ export function AuthProvider({ children }) {
   const [profileLoading, setProfileLoading] = useState(false)
   const [profileReady, setProfileReady] = useState(false)
   const [documentsLoading, setDocumentsLoading] = useState(false)
-  const profileFetchRef = useRef(null)
 
-  const loadProfile = useCallback(async (userId) => {
-    if (!userId) {
-      setProfile(null)
-      setProfileLoading(false)
-      setProfileReady(true)
-      profileFetchRef.current = null
-      return
-    }
-
-    if (profileFetchRef.current === userId && profileLoading) return
-    profileFetchRef.current = userId
-    setProfileLoading(true)
-    setProfileReady(false)
-
-    console.debug('[AuthContext] loadProfile start', {
-      userId,
-      profileFetchRef: profileFetchRef.current,
-      previousProfile: profile,
-    })
-
-    try {
-      const data = await fetchProfile(userId)
-      console.debug('[AuthContext] loadProfile success', { userId, profile: data })
-      setProfile(data)
-    } catch (err) {
-      if (err?.code !== 'PGRST116') {
-        console.warn('[AuthContext] loadProfile error:', err?.message)
-      } else {
-        console.debug('[AuthContext] loadProfile no profile found', { userId, error: err.message })
-      }
-      setProfile(null)
-    } finally {
-      setProfileLoading(false)
-      setProfileReady(true)
-      profileFetchRef.current = null
-    }
-  }, [profileLoading, profile])
+  const bootstrappedRef = useRef(false)
+  const userIdRef = useRef(null)
+  const profileInflightRef = useRef(new Map())
 
   const loadUserDocuments = useCallback(async (userId, legacyProfile) => {
     if (!userId) {
@@ -68,7 +41,7 @@ export function AuthProvider({ children }) {
       setUserDocuments(docs)
       return docs
     } catch (err) {
-      console.warn('[AuthContext] loadUserDocuments:', err?.message)
+      if (import.meta.env.DEV) console.warn('[AuthContext] loadUserDocuments:', err?.message)
       if (legacyProfile?.identity_documents) {
         const legacy = parseDocuments(legacyProfile.identity_documents)
         setUserDocuments(legacy)
@@ -81,127 +54,205 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  const refreshSession = useCallback(async (sessionUser) => {
+  const loadProfile = useCallback(async (sessionUserOrUserId, { force = false } = {}) => {
+    const sessionUser = typeof sessionUserOrUserId === 'string' ? null : sessionUserOrUserId
+    const userId = typeof sessionUserOrUserId === 'string'
+      ? sessionUserOrUserId
+      : sessionUserOrUserId?.id
+
+    if (!userId) {
+      setProfile(null)
+      setProfileLoading(false)
+      setProfileReady(true)
+      return null
+    }
+
+    if (!force && profileInflightRef.current.has(userId)) {
+      return profileInflightRef.current.get(userId)
+    }
+
+    const promise = (async () => {
+      setProfileLoading(true)
+      setProfileReady(false)
+      try {
+        const data = await fetchProfile(userId, sessionUser)
+        setProfile(data)
+        return data
+      } catch (err) {
+        if (sessionUser && isAdminRole(null, sessionUser)) {
+          const fallback = {
+            id: userId,
+            email: sessionUser.email ?? null,
+            role: 'admin',
+            full_name: sessionUser.user_metadata?.full_name ?? null,
+          }
+          setProfile(fallback)
+          return fallback
+        }
+        if (import.meta.env.DEV && err?.code !== 'PGRST116') {
+          console.warn('[AuthContext] loadProfile:', err?.message)
+        }
+        setProfile(null)
+        return null
+      } finally {
+        setProfileLoading(false)
+        setProfileReady(true)
+        profileInflightRef.current.delete(userId)
+      }
+    })()
+
+    profileInflightRef.current.set(userId, promise)
+    return promise
+  }, [])
+
+  const refreshSession = useCallback(async (sessionUser, { forceProfile = false } = {}) => {
     if (!sessionUser) {
       setProfile(null)
       setProfileReady(false)
       setUserDocuments(null)
-      profileFetchRef.current = null
+      profileInflightRef.current.clear()
       return
     }
-
-    console.debug('[AuthContext] refreshSession', {
-      userId: sessionUser.id,
-      email: sessionUser.email,
-      user: sessionUser,
-    })
-
-    setProfileReady(false)
-    let prof = null
-    try {
-      prof = await fetchProfile(sessionUser.id)
-      console.debug('[AuthContext] refreshSession profile', { userId: sessionUser.id, profile: prof })
-      setProfile(prof)
-    } catch (err) {
-      if (err?.code !== 'PGRST116') console.warn('[AuthContext] refreshSession loadProfile:', err?.message)
-      setProfile(null)
-    } finally {
-      setProfileReady(true)
-    }
-
+    if (forceProfile) profileInflightRef.current.delete(sessionUser.id)
+    const prof = await loadProfile(sessionUser, { force: forceProfile })
     await loadUserDocuments(sessionUser.id, prof)
-  }, [loadUserDocuments])
+  }, [loadProfile, loadUserDocuments])
+
+  const applySession = useCallback((sessionUser, { refreshProfile = false } = {}) => {
+    const prevId = userIdRef.current
+    const nextId = sessionUser?.id ?? null
+    userIdRef.current = nextId
+    setUser(sessionUser)
+
+    if (sessionUser && (refreshProfile || nextId !== prevId)) {
+      refreshSession(sessionUser, { forceProfile: refreshProfile }).catch(() => {})
+    }
+    if (!sessionUser) {
+      setProfile(null)
+      setProfileReady(false)
+      setUserDocuments(null)
+      profileInflightRef.current.clear()
+    }
+  }, [refreshSession])
 
   useEffect(() => {
     let mounted = true
 
-    async function initAuth() {
-      try {
-        const session = await authGetSession()
-        if (!mounted) return
+    const finishBootstrap = (sessionUser) => {
+      if (!mounted || bootstrappedRef.current) return
+      bootstrappedRef.current = true
+      applySession(sessionUser, { refreshProfile: !!sessionUser })
+      setAuthLoading(false)
+    }
 
+    const bootstrapTimeout = window.setTimeout(() => {
+      if (!mounted || bootstrappedRef.current) return
+      bootstrappedRef.current = true
+      setAuthLoading(false)
+    }, 8000)
+
+    const handleAuthEvent = (event, session) => {
+      if (!mounted) return
+
+      if (event === 'TOKEN_REFRESHED') {
         const sessionUser = session?.user ?? null
-        console.debug('[AuthContext] authGetSession result', { session, sessionUser })
-        setUser(sessionUser)
+        if (sessionUser) setUser(sessionUser)
+        return
+      }
 
-        if (sessionUser) {
-          await refreshSession(sessionUser)
-        } else {
-          setProfile(null)
-          setProfileReady(false)
-        }
-      } catch (err) {
-        if (mounted) {
-          setProfile(null)
-          setProfileReady(false)
-        }
-        console.warn('[AuthContext] authGetSession failed', err)
-      } finally {
-        if (mounted) setAuthLoading(false)
+      const sessionUser = session?.user ?? null
+
+      if (event === 'INITIAL_SESSION') {
+        finishBootstrap(sessionUser)
+        return
+      }
+
+      if (!bootstrappedRef.current) {
+        finishBootstrap(sessionUser)
+        return
+      }
+
+      setAuthLoading(false)
+
+      if (event === 'SIGNED_OUT') {
+        applySession(null)
+        return
+      }
+
+      if (sessionUser) {
+        const refreshProfile =
+          event === 'USER_UPDATED'
+          || event === 'SIGNED_IN'
+          || sessionUser.id !== userIdRef.current
+        applySession(sessionUser, { refreshProfile })
+      } else {
+        applySession(null)
       }
     }
 
-    initAuth()
+    authGetSession()
+      .then((session) => {
+        if (!mounted || bootstrappedRef.current) return
+        finishBootstrap(session?.user ?? null)
+      })
+      .catch(() => {
+        if (mounted && !bootstrappedRef.current) finishBootstrap(null)
+      })
 
-    const subscription = authOnChange((event, session) => {
-      if (!mounted) return
-      const sessionUser = session?.user ?? null
-      console.debug('[AuthContext] authOnChange', { event, sessionUser })
-      setUser(sessionUser)
-      if (sessionUser) {
-        refreshSession(sessionUser)
-      } else {
-        setProfile(null)
-        setProfileReady(false)
-        setUserDocuments(null)
-        profileFetchRef.current = null
-      }
-    })
+    const subscription = authOnChange(handleAuthEvent)
 
     return () => {
       mounted = false
-      subscription.unsubscribe()
+      window.clearTimeout(bootstrapTimeout)
+      subscription?.unsubscribe?.()
     }
-  }, [refreshSession])
+  }, [applySession])
 
   const signOut = useCallback(async () => {
     setProfile(null)
     setProfileReady(false)
     setUserDocuments(null)
-    profileFetchRef.current = null
+    profileInflightRef.current.clear()
+    userIdRef.current = null
+    setUser(null)
     await authSignOut()
   }, [])
 
-  const isAdmin = profile?.role?.toString().toLowerCase() === 'admin'
+  const effectiveRole = resolveEffectiveRole(profile, user)
+  const isAdmin = isAdminRole(profile, user)
   const isEmailVerified = user?.email_confirmed_at != null
 
-  console.debug('[AuthContext] auth state', {
-    userId: user?.id,
-    email: user?.email,
+  const value = useMemo(() => ({
+    user,
     profile,
-    profileReady,
+    userDocuments,
+    authLoading,
     profileLoading,
+    profileReady,
+    documentsLoading,
+    effectiveRole,
     isAdmin,
-  })
+    isEmailVerified,
+    loadProfile,
+    loadUserDocuments,
+    signOut,
+  }), [
+    user,
+    profile,
+    userDocuments,
+    authLoading,
+    profileLoading,
+    profileReady,
+    documentsLoading,
+    effectiveRole,
+    isAdmin,
+    isEmailVerified,
+    loadProfile,
+    loadUserDocuments,
+    signOut,
+  ])
 
-  return (
-    <AuthContext.Provider value={{
-      user,
-      profile,
-      userDocuments,
-      authLoading,
-      profileLoading,
-      profileReady,
-      documentsLoading,
-      isAdmin,
-      isEmailVerified,
-      loadProfile,
-      loadUserDocuments,
-      signOut,
-    }}>
-      {children}
-    </AuthContext.Provider>
-  )
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

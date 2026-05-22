@@ -1,5 +1,13 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { getAllReservations, getAllProfiles, supabase } from '../lib/supabase'
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import { getAllReservations, getAllProfiles, mapRowToReservation, supabase } from '../lib/supabase'
 import { fetchAllCars } from '../services/cars.service'
 
 const AdminDataContext = createContext(null)
@@ -9,40 +17,88 @@ export function AdminDataProvider({ children }) {
   const [users, setUsers] = useState([])
   const [cars, setCars] = useState([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState(null)
 
-  const refresh = useCallback(async () => {
-    setLoading(true)
+  const fetchingRef = useRef(false)
+  const refreshDebounceRef = useRef(null)
+
+  const refresh = useCallback(async (isInitial = false) => {
+    if (fetchingRef.current) return
+    fetchingRef.current = true
+
+    if (isInitial) setLoading(true)
+    else setRefreshing(true)
     setError(null)
+
     try {
-      const [res, prof, fleet] = await Promise.all([
+      const [resR, profR, fleetR] = await Promise.allSettled([
         getAllReservations(),
         getAllProfiles(),
         fetchAllCars(),
       ])
-      setReservations(res)
-      setUsers(prof)
-      setCars(fleet)
+
+      if (resR.status === 'fulfilled') setReservations(resR.value)
+      else {
+        console.warn('[AdminData] reservations:', resR.reason?.message)
+        setReservations([])
+      }
+
+      if (profR.status === 'fulfilled') setUsers(profR.value)
+      else {
+        console.warn('[AdminData] profiles:', profR.reason?.message)
+        setUsers([])
+      }
+
+      if (fleetR.status === 'fulfilled') setCars(fleetR.value)
+      else {
+        console.warn('[AdminData] fleet:', fleetR.reason?.message)
+        setCars([])
+      }
+
+      const failures = [resR, profR, fleetR].filter((r) => r.status === 'rejected')
+      if (failures.length === 3) {
+        setError(failures[0].reason?.message || 'Erreur chargement admin')
+      }
     } catch (err) {
       setError(err?.message || 'Erreur chargement admin')
     } finally {
+      fetchingRef.current = false
       setLoading(false)
+      setRefreshing(false)
     }
   }, [])
 
+  const scheduleRefresh = useCallback(() => {
+    if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current)
+    refreshDebounceRef.current = setTimeout(() => refresh(false), 400)
+  }, [refresh])
+
   useEffect(() => {
-    refresh()
+    refresh(true)
+    return () => {
+      if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current)
+    }
   }, [refresh])
 
   useEffect(() => {
     const channel = supabase
       .channel('admin-reservations-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, () => {
-        refresh()
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, (payload) => {
+        if (payload.eventType === 'INSERT' && payload.new) {
+          const mapped = mapRowToReservation(payload.new)
+          setReservations((prev) => {
+            if (prev.some((r) => r.id === mapped.id)) return prev
+            return [mapped, ...prev]
+          })
+          return
+        }
+        scheduleRefresh()
       })
       .subscribe()
+
     return () => { supabase.removeChannel(channel) }
-  }, [refresh])
+  }, [scheduleRefresh])
 
   const stats = useMemo(() => {
     const active = reservations.filter((r) => ['pending', 'confirmed'].includes(r.status))
@@ -107,14 +163,15 @@ export function AdminDataProvider({ children }) {
       cars,
       setCars,
       loading,
+      refreshing,
       error,
       stats,
       chartData,
       activity,
-      refresh,
-      refreshAll: refresh, // FIX: alias used by AvailabilityCalendar
+      refresh: () => refresh(false),
+      refreshAll: () => refresh(false),
     }),
-    [reservations, users, cars, loading, error, stats, chartData, activity, refresh],
+    [reservations, users, cars, loading, refreshing, error, stats, chartData, activity, refresh],
   )
 
   return <AdminDataContext.Provider value={value}>{children}</AdminDataContext.Provider>

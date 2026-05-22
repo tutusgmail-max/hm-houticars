@@ -9,7 +9,16 @@ if (!supabaseUrl || !supabaseAnonKey) {
   )
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: typeof window !== 'undefined'
+      && (window.location.pathname === '/reset-password'
+        || window.location.hash.includes('access_token')),
+    storageKey: 'hmhouticars-auth',
+  },
+})
 
 // ─── Auth helpers ────────────────────────────────────────────────────────────
 
@@ -209,8 +218,19 @@ export async function getAllReservations() {
     .from('reservations')
     .select(`*, profiles(full_name, email, phone)`)
     .order('created_at', { ascending: false })
-  if (error) throw error
-  return (data || []).map(mapRowToReservation)
+
+  if (!error) return (data || []).map(mapRowToReservation)
+
+  if (error.code === 'PGRST200' || /relationship|schema cache/i.test(error.message || '')) {
+    const { data: plain, error: plainErr } = await supabase
+      .from('reservations')
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (plainErr) throw plainErr
+    return (plain || []).map(mapRowToReservation)
+  }
+
+  throw error
 }
 
 export async function updateReservationStatus(id, status) {
@@ -243,11 +263,30 @@ export async function uploadDocument(userId, docType, file) {
 
 // ─── Admin ───────────────────────────────────────────────────────────────────
 
+export function isSchemaOrRlsError(error) {
+  if (!error) return false
+  const code = error.code || ''
+  const msg = error.message || ''
+  return (
+    code === 'PGRST200'
+    || code === 'PGRST204'
+    || code === 'PGRST205'
+    || code === '42P01'
+    || /permission denied|row-level security|schema cache/i.test(msg)
+  )
+}
+
 export async function getAllProfiles() {
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
     .order('created_at', { ascending: false })
-  if (error) throw error
+  if (error) {
+    if (isSchemaOrRlsError(error)) {
+      console.warn('[getAllProfiles]', error.message)
+      return []
+    }
+    throw error
+  }
   return data || []
 }

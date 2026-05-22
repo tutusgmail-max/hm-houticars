@@ -101,7 +101,7 @@ export default function DashboardPage() {
     setAvatarUploading(true)
     try {
       await uploadAvatar(user.id, file)
-      await loadProfile(user.id)
+      await loadProfile(user)
       addToast('Photo de profil mise à jour !')
     } catch {
       addToast('Erreur lors du téléchargement.', 'error')
@@ -118,7 +118,7 @@ export default function DashboardPage() {
     setSaving(true)
     try {
       await updateProfileData(user.id, profileForm)
-      await loadProfile(user.id)
+      await loadProfile(user)
       addToast('Profil mis à jour avec succès !')
       setEditMode(false)
       setProfileErrors({})
@@ -417,8 +417,8 @@ export default function DashboardPage() {
 
                   <ProfileField label="Rôle">
                     <span className={`inline-flex px-3 py-1 rounded-full text-[12px] font-bold
-                      ${profile?.role === 'admin' ? 'bg-gold/20 text-gold-dark' : 'bg-blue-100 text-blue-700'}`}>
-                      {profile?.role === 'admin' ? '👑 Administrateur' : '👤 Client'}
+                      ${isAdmin ? 'bg-gold/20 text-gold-dark' : 'bg-blue-100 text-blue-700'}`}>
+                      {isAdmin ? '👑 Administrateur' : '👤 Client'}
                     </span>
                   </ProfileField>
 

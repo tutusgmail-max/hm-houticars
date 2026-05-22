@@ -18,6 +18,10 @@ export default function HomePage() {
       addToast('Accès administrateur refusé.', 'error')
       window.history.replaceState({}, document.title)
     }
+    if (location.state?.authRequired) {
+      addToast('Connectez-vous pour accéder à cette page.', 'error')
+      window.history.replaceState({}, document.title)
+    }
   }, [location.state, addToast])
 
   return (

@@ -1,17 +1,68 @@
 /**
- * profile.service.js
- * All profile-related Supabase calls in one place.
+ * profile.service.js — profile reads/writes with safe admin resolution.
  */
 import { supabase } from '../lib/supabase'
+import { getMetadataRole } from '../utils/adminRole'
 
-export async function fetchProfile(userId) {
+async function syncProfileRoleFromMetadata(userId, profile, sessionUser) {
+  const metaRole = getMetadataRole(sessionUser)
+  if (metaRole !== 'admin' || profile?.role === 'admin') return profile
+
+  const { data: updated, error } = await supabase
+    .from('profiles')
+    .update({ role: 'admin' })
+    .eq('id', userId)
+    .select('*')
+    .single()
+
+  if (!error && updated) return updated
+
+  // Trigger may block self-promotion; UI still treats metadata admin via AuthContext.
+  return { ...profile, role: 'admin' }
+}
+
+export async function fetchProfile(userId, sessionUser = null) {
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
     .eq('id', userId)
     .single()
-  if (error) throw error
-  return data
+
+  if (!error && data) {
+    if (sessionUser) return syncProfileRoleFromMetadata(userId, data, sessionUser)
+    return data
+  }
+
+  if ((error?.code === 'PGRST116' || /0 rows|no rows/i.test(error?.message || '')) && sessionUser) {
+    const metaRole = getMetadataRole(sessionUser)
+    const payload = {
+      id: userId,
+      email: sessionUser.email ?? null,
+      full_name: sessionUser.user_metadata?.full_name ?? sessionUser.user_metadata?.name ?? null,
+      role: metaRole === 'admin' ? 'admin' : 'client',
+    }
+    const metaPhone = sessionUser.user_metadata?.phone
+    if (metaPhone) payload.phone = metaPhone
+
+    const { data: created, error: createErr } = await supabase
+      .from('profiles')
+      .insert(payload)
+      .select('*')
+      .single()
+
+    if (!createErr && created) return created
+  }
+
+  if (sessionUser && getMetadataRole(sessionUser) === 'admin') {
+    return {
+      id: userId,
+      email: sessionUser.email ?? null,
+      full_name: sessionUser.user_metadata?.full_name ?? null,
+      role: 'admin',
+    }
+  }
+
+  throw error
 }
 
 export async function updateProfileData(userId, updates) {

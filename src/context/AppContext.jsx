@@ -6,7 +6,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { authGetSession } from '../services/auth.service'
 
 const AppContext = createContext(null)
-const PENDING_BOOKING_KEY = 'hmhouticars.pendingBooking'
+const PENDING_BOOKING_KEY = 'hmhouticars.pendingBooking.v3'
 const BOOKING_AUTH_MESSAGE = 'Veuillez créer un compte ou vous connecter pour continuer votre réservation.'
 const PENDING_TTL = 30 * 60 * 1000
 

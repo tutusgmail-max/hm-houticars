@@ -1,46 +1,52 @@
 /**
- * ProtectedRoute.jsx
- *
- * BUG FIXED: Original called openAuth() during render — a React rule violation.
- * Side effects during render cause double-invocation in StrictMode and
- * can lead to infinite re-render loops.
- *
- * FIX: Use useEffect to trigger the modal after render.
- * Also: admin check now waits for profile to load before redirecting.
+ * ProtectedRoute — auth modal via effect; admin waits for profile resolution.
  */
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import { useApp } from '../context/AppContext'
 import FullPageLoader from '../components/ui/FullPageLoader'
 
 export default function ProtectedRoute({ children, adminOnly = false }) {
-  const { user, profile, authLoading, profileLoading, profileReady, isAdmin } = useAuth()
+  const { user, profile, authLoading, profileLoading, profileReady, isAdmin, loadProfile } = useAuth()
   const { openAuth } = useApp()
+  const openAuthRef = useRef(openAuth)
+  openAuthRef.current = openAuth
+  const authPromptedRef = useRef(false)
+  const [adminVerified, setAdminVerified] = useState(!adminOnly)
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      openAuth('login')
+    if (authLoading || user) {
+      if (user) authPromptedRef.current = false
+      return
     }
-  }, [authLoading, user, openAuth])
+    if (authPromptedRef.current) return
+    authPromptedRef.current = true
+    openAuthRef.current('login')
+  }, [authLoading, user?.id])
 
   useEffect(() => {
-    console.debug('[ProtectedRoute] auth check', {
-      userId: user?.id,
-      email: user?.email,
-      profile,
-      profileLoading,
-      profileReady,
-      isAdmin,
-      adminOnly,
-    })
-  }, [user, profile, profileLoading, profileReady, isAdmin, adminOnly])
+    if (!adminOnly || authLoading || !user) {
+      setAdminVerified(!adminOnly)
+      return
+    }
+
+    let cancelled = false
+    setAdminVerified(false)
+
+    ;(async () => {
+      await loadProfile(user, { force: true })
+      if (!cancelled) setAdminVerified(true)
+    })()
+
+    return () => { cancelled = true }
+  }, [adminOnly, authLoading, user?.id, user?.user_metadata?.role, user?.app_metadata?.role, loadProfile])
 
   if (authLoading) return <FullPageLoader />
 
-  if (!user) return <Navigate to="/" replace />
+  if (!user) return <Navigate to="/" replace state={{ authRequired: true }} />
 
-  if (adminOnly && (profileLoading || !profileReady)) {
+  if (adminOnly && (!profileReady || profileLoading || !adminVerified)) {
     return <FullPageLoader />
   }
 
