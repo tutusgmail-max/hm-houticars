@@ -5,27 +5,50 @@ import { BsFuelPump } from 'react-icons/bs'
 import { useApp } from '../context/AppContext'
 import LazyImage from './ui/LazyImage'
 
-function CarCard({ car, delay = 0 }) {
+const cardSurfaceStyle = {
+  background: 'rgba(13,26,42,0.65)',
+  border: '1px solid rgba(255,255,255,0.05)',
+  borderRadius: 20,
+  backdropFilter: 'blur(12px)',
+  boxShadow: '0 4px 32px rgba(0,0,0,0.3)',
+}
+
+function CarCard({ car, delay = 0, inCarousel = false }) {
   const { openBooking } = useApp()
   const handleReserve = useCallback(() => openBooking(car), [openBooking, car])
+
+  const cardClass =
+    'group overflow-hidden cursor-pointer h-full flex flex-col relative transition-transform duration-300 ease-out md:hover:-translate-y-1.5'
+
+  if (inCarousel) {
+    return (
+      <div className={cardClass} style={cardSurfaceStyle}>
+        <CarCardBody car={car} handleReserve={handleReserve} />
+      </div>
+    )
+  }
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 28 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
-      transition={{ duration: 0.45, delay: delay * 0.07, ease: [0.16,1,0.3,1] }}
+      transition={{ duration: 0.45, delay: delay * 0.07, ease: [0.16, 1, 0.3, 1] }}
       whileHover={{ y: -6 }}
-      className="group overflow-hidden cursor-pointer h-full flex flex-col relative"
+      className={cardClass}
       style={{
-        background: 'rgba(13,26,42,0.65)',
-        border: '1px solid rgba(255,255,255,0.05)',
-        borderRadius: 20,
-        backdropFilter: 'blur(12px)',
-        boxShadow: '0 4px 32px rgba(0,0,0,0.3)',
+        ...cardSurfaceStyle,
         transition: 'all 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
       }}
     >
+      <CarCardBody car={car} handleReserve={handleReserve} />
+    </motion.div>
+  )
+}
+
+function CarCardBody({ car, handleReserve }) {
+  return (
+    <>
       {/* Top gold line */}
       <div className="absolute inset-x-0 top-0 h-px" style={{ background: 'linear-gradient(to right, transparent, rgba(201,168,76,0.5), transparent)', opacity: 0.6 }} />
 
@@ -115,7 +138,7 @@ function CarCard({ car, delay = 0 }) {
           </button>
         </div>
       </div>
-    </motion.div>
+    </>
   )
 }
 
