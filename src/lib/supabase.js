@@ -166,6 +166,9 @@ export function mapRowToReservation(row) {
     total:           row.total ?? row.total_price ?? 0,
     pickup_location: pickup_location ?? '—',
     return_location: return_location ?? '—',
+    source:          row.source ?? 'website',
+    is_guest:        row.is_guest ?? false,
+    admin_notes:     row.admin_notes ?? null,
   }
 }
 
@@ -243,6 +246,113 @@ export async function updateReservationStatus(id, status) {
 export async function deleteReservation(id) {
   const { error } = await supabase.from('reservations').delete().eq('id', id)
   if (error) throw error
+}
+
+export async function updateReservationFull(id, updates) {
+  const { data, error } = await supabase
+    .from('reservations')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return mapRowToReservation(data)
+}
+
+export async function createAdminReservation(reservation, adminId) {
+  const { data: overlaps, error: overlapError } = await supabase
+    .from('reservations')
+    .select('id')
+    .eq('car_id', reservation.car_id)
+    .in('status', ['confirmed', 'completed'])
+    .lte('start_date', reservation.end_date)
+    .gte('end_date', reservation.start_date)
+    .limit(1)
+
+  if (overlapError) throw overlapError
+  if (overlaps?.length) {
+    throw new Error('Ce véhicule est déjà confirmé sur ces dates.')
+  }
+
+  const ref = reservation.ref || `ADM-${Date.now().toString(36).toUpperCase()}`
+  const baseRow = {
+    ...mapReservationToRow({ ...reservation, ref }),
+    source: 'admin',
+    is_guest: !reservation.user_id,
+    created_by_admin_id: adminId || null,
+    status: reservation.status || 'confirmed',
+    admin_notes: reservation.admin_notes || null,
+  }
+
+  const insertOnce = async (row) =>
+    supabase.from('reservations').insert(row).select().single()
+
+  let { data, error } = await insertOnce(baseRow)
+
+  if (error && (error.code === 'PGRST204' || /schema cache/i.test(error.message || ''))) {
+    await new Promise((r) => setTimeout(r, 600))
+    ;({ data, error } = await insertOnce(baseRow))
+  }
+
+  if (error?.code === 'PGRST204') {
+    const {
+      ref: _r, total: _t, pickup_location: _p, return_location: _rl,
+      documents: _d, cin_front_url: _cf, cin_back_url: _cb,
+      permis_front_url: _pf, permis_back_url: _pb,
+      reference: _ref, total_price: _tp,
+      source: _src, is_guest: _ig, created_by_admin_id: _ca,
+      admin_notes: _an,
+      ...legacyRow
+    } = baseRow
+    ;({ data, error } = await insertOnce(legacyRow))
+  }
+
+  if (error) throw error
+
+  try {
+    await writeAuditLog({
+      admin_id: adminId,
+      action: 'create_reservation',
+      entity_type: 'reservation',
+      entity_id: data.id,
+      new_data: data,
+      meta: { source: 'admin_panel', ref },
+    })
+  } catch (_) {}
+
+  return mapRowToReservation(data)
+}
+
+export async function writeAuditLog({ admin_id, action, entity_type, entity_id, old_data, new_data, meta }) {
+  const { error } = await supabase.from('audit_logs').insert({
+    admin_id: admin_id || null,
+    action,
+    entity_type,
+    entity_id: entity_id ? String(entity_id) : null,
+    old_data: old_data || null,
+    new_data: new_data || null,
+    meta: meta || null,
+  })
+  if (error) console.warn('[auditLog] write failed:', error.message)
+}
+
+export async function getAuditLogs({ limit = 100, entity_type, entity_id, admin_id } = {}) {
+  let query = supabase
+    .from('audit_logs')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (entity_type) query = query.eq('entity_type', entity_type)
+  if (entity_id) query = query.eq('entity_id', String(entity_id))
+  if (admin_id) query = query.eq('admin_id', admin_id)
+
+  const { data, error } = await query
+  if (error) {
+    if (isSchemaOrRlsError(error)) return []
+    throw error
+  }
+  return data || []
 }
 
 // ─── Document upload ─────────────────────────────────────────────────────────

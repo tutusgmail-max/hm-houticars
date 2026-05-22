@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Search, Download, Eye, Check, X, Trash2 } from 'lucide-react'
+import { Search, Download, Eye, Check, X, Trash2, Plus } from 'lucide-react'
+import CreateReservationModal from './CreateReservationModal'
 import { useApp } from '../../context/AppContext'
 import { useAdminData } from '../../context/AdminDataContext'
 import { updateReservationStatus, deleteReservation } from '../../lib/supabase'
@@ -29,6 +30,8 @@ export default function ReservationManagement() {
   const [detail, setDetail] = useState(null)
   const [docs, setDocs] = useState(null)
   const [docsLoading, setDocsLoading] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [sourceFilter, setSourceFilter] = useState('all')
 
   const filtered = useMemo(() => {
     return reservations.filter((r) => {
@@ -39,9 +42,11 @@ export default function ReservationManagement() {
         r.car_name?.toLowerCase().includes(q) ||
         (r.customer_name || r.profiles?.full_name || '').toLowerCase().includes(q)
       const matchS = status === 'all' || r.status === status
-      return matchQ && matchS
+      const src = r.source || 'website'
+      const matchSource = sourceFilter === 'all' || src === sourceFilter
+      return matchQ && matchS && matchSource
     })
-  }, [reservations, search, status])
+  }, [reservations, search, status, sourceFilter])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -137,14 +142,35 @@ export default function ReservationManagement() {
               </option>
             ))}
           </select>
+          <select
+            value={sourceFilter}
+            onChange={(e) => {
+              setSourceFilter(e.target.value)
+              setPage(1)
+            }}
+            className="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm"
+          >
+            <option value="all">Toutes sources</option>
+            <option value="website">Site web</option>
+            <option value="admin">Admin</option>
+          </select>
         </div>
-        <button
-          type="button"
-          onClick={exportCsv}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[#C9A84C]/30 text-[#C9A84C] font-bold text-sm hover:bg-[#C9A84C]/10"
-        >
-          <Download size={18} /> Exporter CSV
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setCreateOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#C9A84C] text-[#0B1623] font-black text-sm hover:bg-[#E8C76A]"
+          >
+            <Plus size={18} /> Nouvelle réservation
+          </button>
+          <button
+            type="button"
+            onClick={exportCsv}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[#C9A84C]/30 text-[#C9A84C] font-bold text-sm hover:bg-[#C9A84C]/10"
+          >
+            <Download size={18} /> Exporter CSV
+          </button>
+        </div>
       </GlassCard>
 
       <GlassCard className="overflow-hidden">
@@ -165,7 +191,19 @@ export default function ReservationManagement() {
             <tbody>
               {paged.map((r) => (
                 <tr key={r.id} className="border-b border-white/5 hover:bg-white/[0.03]">
-                  <td className="p-4 font-mono text-[#C9A84C]">{r.ref}</td>
+                  <td className="p-4 font-mono text-[#C9A84C]">
+                    <div>{r.ref}</div>
+                    {(r.source === 'admin' || r.is_guest) && (
+                      <div className="mt-1 flex gap-1 flex-wrap">
+                        {r.source === 'admin' && (
+                          <span className="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[#C9A84C]/15 text-[#C9A84C]">Admin</span>
+                        )}
+                        {r.is_guest && (
+                          <span className="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">Invité</span>
+                        )}
+                      </div>
+                    )}
+                  </td>
                   <td className="p-4 font-medium">{r.customer_name || r.profiles?.full_name || '—'}</td>
                   <td className="p-4 text-white/50">{r.customer_phone || r.profiles?.phone || '—'}</td>
                   <td className="p-4">{r.car_name}</td>
@@ -284,6 +322,12 @@ export default function ReservationManagement() {
           </div>
         )}
       </AdminModal>
+
+      <CreateReservationModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={() => setCreateOpen(false)}
+      />
     </motion.div>
   )
 }

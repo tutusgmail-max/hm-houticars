@@ -141,6 +141,15 @@ export function AdminDataProvider({ children }) {
     return Object.values(months)
   }, [reservations])
 
+  const addReservationLocally = useCallback((reservation) => {
+    if (!reservation?.id) return
+    const mapped = mapRowToReservation(reservation)
+    setReservations((prev) => {
+      if (prev.some((r) => r.id === mapped.id)) return prev
+      return [mapped, ...prev]
+    })
+  }, [])
+
   const activity = useMemo(() => {
     return [...reservations]
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
@@ -170,8 +179,9 @@ export function AdminDataProvider({ children }) {
       activity,
       refresh: () => refresh(false),
       refreshAll: () => refresh(false),
+      addReservationLocally,
     }),
-    [reservations, users, cars, loading, refreshing, error, stats, chartData, activity, refresh],
+    [reservations, users, cars, loading, refreshing, error, stats, chartData, activity, refresh, addReservationLocally],
   )
 
   return <AdminDataContext.Provider value={value}>{children}</AdminDataContext.Provider>
