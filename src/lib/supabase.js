@@ -10,6 +10,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     // Hash tokens consumed manually in AuthHashRouter (route-aware, no /admin hijack).
     detectSessionInUrl: false,
     storageKey: 'hmhouticars-auth',
+    // Each origin keeps its own session; signOut must use scope: 'local' (see auth.service).
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    multiTab: true,
   },
 })
 
@@ -42,8 +45,9 @@ export async function signIn({ email, password }) {
   return data
 }
 
-export async function signOut() {
-  const { error } = await supabase.auth.signOut()
+export async function signOut(options = {}) {
+  const scope = options.scope ?? 'local'
+  const { error } = await supabase.auth.signOut({ scope })
   if (error) throw error
 }
 

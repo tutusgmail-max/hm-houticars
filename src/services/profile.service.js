@@ -99,6 +99,6 @@ export async function uploadAvatar(userId, file) {
 
 export async function deleteUserAccount(userId) {
   await supabase.from('profiles').delete().eq('id', userId)
-  const { error } = await supabase.auth.signOut()
+  const { error } = await supabase.auth.signOut({ scope: 'global' })
   if (error) throw error
 }

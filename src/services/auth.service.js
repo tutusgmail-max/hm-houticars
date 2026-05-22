@@ -40,9 +40,20 @@ export async function authSignIn({ email, password }) {
 }
 
 // ── Sign Out ─────────────────────────────────────────────────────────────────
-export async function authSignOut() {
-  const { error } = await supabase.auth.signOut()
+/**
+ * Sign out the current browser session only (default).
+ * Use scope "global" only when the user explicitly wants all devices signed out.
+ * @param {{ scope?: 'local' | 'global' | 'others' }} [options]
+ */
+export async function authSignOut(options = {}) {
+  const scope = options.scope ?? 'local'
+  const { error } = await supabase.auth.signOut({ scope })
   if (error) throw error
+}
+
+/** Revoke all refresh tokens for this user (every device). */
+export async function authSignOutAllDevices() {
+  return authSignOut({ scope: 'global' })
 }
 
 // ── Forgot Password ──────────────────────────────────────────────────────────

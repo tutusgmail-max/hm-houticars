@@ -10,7 +10,12 @@ import React, {
   useRef,
   useMemo,
 } from 'react'
-import { authGetSession, authOnChange, authSignOut } from '../services/auth.service'
+import {
+  authGetSession,
+  authOnChange,
+  authSignOut,
+  authSignOutAllDevices,
+} from '../services/auth.service'
 import { fetchProfile } from '../services/profile.service'
 import { fetchUserDocuments, parseDocuments } from '../services/documentUpload.service'
 import { isAdminRole, resolveEffectiveRole } from '../utils/adminRole'
@@ -189,21 +194,32 @@ export function AuthProvider({ children }) {
       setAuthLoading(false)
 
       if (event === 'SIGNED_OUT') {
-        applySession(null)
-        clearAuthHashFromUrl()
+        authGetSession()
+          .then((session) => {
+            if (!mounted) return
+            if (session?.user) {
+              applySession(session.user, { refreshProfile: false })
+              return
+            }
+            applySession(null)
+            clearAuthHashFromUrl()
+          })
+          .catch(() => {
+            if (!mounted) return
+            applySession(null)
+            clearAuthHashFromUrl()
+          })
         return
       }
 
-      if (sessionUser) {
-        const refreshProfile =
-          event === 'USER_UPDATED'
-          || event === 'SIGNED_IN'
-          || sessionUser.id !== userIdRef.current
-        applySession(sessionUser, { refreshProfile })
-        if (event === 'SIGNED_IN') clearAuthHashFromUrl()
-      } else {
-        applySession(null)
-      }
+      if (!sessionUser) return
+
+      const refreshProfile =
+        event === 'USER_UPDATED'
+        || event === 'SIGNED_IN'
+        || sessionUser.id !== userIdRef.current
+      applySession(sessionUser, { refreshProfile })
+      if (event === 'SIGNED_IN') clearAuthHashFromUrl()
     }
 
     authGetSession()
@@ -224,15 +240,46 @@ export function AuthProvider({ children }) {
     }
   }, [applySession])
 
-  const signOut = useCallback(async () => {
-    setProfile(null)
-    setProfileReady(false)
-    setUserDocuments(null)
-    profileInflightRef.current.clear()
-    userIdRef.current = null
-    setUser(null)
-    await authSignOut()
+  // Recover session after tab sleep / deploy without clearing other devices.
+  useEffect(() => {
+    const recover = async () => {
+      if (document.visibilityState !== 'visible') return
+      try {
+        const session = await authGetSession()
+        const sessionUser = session?.user ?? null
+        if (sessionUser) {
+          applySession(sessionUser, { refreshProfile: false })
+        }
+      } catch {
+        /* keep current UI state */
+      }
+    }
+    document.addEventListener('visibilitychange', recover)
+    window.addEventListener('focus', recover)
+    return () => {
+      document.removeEventListener('visibilitychange', recover)
+      window.removeEventListener('focus', recover)
+    }
+  }, [applySession])
+
+  const signOut = useCallback(async ({ everywhere = false } = {}) => {
+    try {
+      if (everywhere) {
+        await authSignOutAllDevices()
+      } else {
+        await authSignOut({ scope: 'local' })
+      }
+    } finally {
+      setProfile(null)
+      setProfileReady(false)
+      setUserDocuments(null)
+      profileInflightRef.current.clear()
+      userIdRef.current = null
+      setUser(null)
+    }
   }, [])
+
+  const signOutEverywhere = useCallback(() => signOut({ everywhere: true }), [signOut])
 
   const effectiveRole = resolveEffectiveRole(profile, user)
   const isAdmin = isAdminRole(profile, user)
@@ -252,6 +299,7 @@ export function AuthProvider({ children }) {
     loadProfile,
     loadUserDocuments,
     signOut,
+    signOutEverywhere,
   }), [
     user,
     profile,
@@ -266,6 +314,7 @@ export function AuthProvider({ children }) {
     loadProfile,
     loadUserDocuments,
     signOut,
+    signOutEverywhere,
   ])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
